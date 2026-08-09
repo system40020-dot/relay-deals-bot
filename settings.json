@@ -1,0 +1,13 @@
+{
+  "_instructions": "Edit anytime -> commit. Takes effect next run.",
+  "headers": [
+    "👗✨ FRESH FASHION DEALS ✨👗",
+    "🔥💃 TODAY'S HOT PICK 💃🔥",
+    "⚡👚 STYLE STEAL ALERT 👚⚡",
+    "💥🛍️ TRENDING NOW 🛍️💥"
+  ],
+  "_headers_help": "One is picked at random for each post, so your channel doesn't look repetitive. Add, remove, or edit as many as you want.",
+  "footer_text": "📢 Join for more fashion deals: [your channel link]",
+  "show_pricehistoryapp_link": true,
+  "_show_pricehistoryapp_link_help": "Adds a link to pricehistoryapp.com so readers can independently verify price trends. Note: this links to their general site, not a deep-link to the exact product, since their site doesn't expose a confirmed way to link directly to one product's chart."
+}
