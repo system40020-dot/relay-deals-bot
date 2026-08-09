@@ -506,4 +506,4 @@ def main():
         except Exception as e:
             # one bad post should never take down the whole run or cause
             # already-relayed posts to be silently lost/reprocessed
-            print(f"  [error] Failed to process a pos
+            print(f"  [error] Failed to process a post, skipping it: {e}")
