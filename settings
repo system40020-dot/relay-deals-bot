@@ -1,0 +1,50 @@
+{
+  "_instructions": "Edit anytime -> commit. Takes effect next run.",
+
+  "category_keywords": {
+    "fashion": ["kurti", "saree", "dress", "jeans", "top", "shirt", "jacket",
+      "footwear", "shoes", "sandal", "heels", "ethnic wear", "western wear",
+      "t-shirt", "tshirt", "trouser", "leggings", "salwar", "lehenga",
+      "dupatta", "clothing", "apparel", "backpack", "bag", "watch", "belt"],
+    "electronics": ["earbuds", "earphone", "headphone", "mobile", "phone",
+      "laptop", "charger", "cable", "power bank", "speaker", "smartwatch",
+      "camera", "tv", "television", "tablet", "mouse", "keyboard", "router"],
+    "beauty": ["lipstick", "makeup", "skincare", "shampoo", "cream", "serum",
+      "perfume", "cosmetic", "foundation", "moisturizer", "sunscreen"],
+    "home_kitchen": ["cookware", "kitchen", "mixer", "grinder", "furniture",
+      "bedsheet", "curtain", "storage", "utensil", "appliance"]
+  },
+  "_category_keywords_help": "Used to detect what type of product a staging post is about, so the right header style gets used (no more fashion emojis on an electronics deal). Add/remove keywords anytime.",
+
+  "category_headers": {
+    "fashion": [
+      "👗✨ FRESH FASHION DEALS ✨👗",
+      "🔥💃 TODAY'S HOT PICK 💃🔥",
+      "⚡👚 STYLE STEAL ALERT 👚⚡",
+      "💥🛍️ TRENDING NOW 🛍️💥"
+    ],
+    "electronics": [
+      "📱⚡ TECH DEAL ALERT ⚡📱",
+      "🔥💻 HOT ELECTRONICS PICK 💻🔥",
+      "⚡🎧 GADGET STEAL ⚡🎧",
+      "💥📱 TRENDING TECH 📱💥"
+    ],
+    "beauty": [
+      "💄✨ BEAUTY DEAL ✨💄",
+      "🔥💅 GLOW UP PICK 💅🔥"
+    ],
+    "home_kitchen": [
+      "🏠✨ HOME ESSENTIAL DEAL ✨🏠",
+      "🔥🍳 KITCHEN PICK 🍳🔥"
+    ],
+    "general": [
+      "🔥💥 TODAY'S DEAL 💥🔥",
+      "⚡🛍️ HOT PICK 🛍️⚡"
+    ]
+  },
+  "_category_headers_help": "Each category gets its own header style, picked randomly per post. 'general' is used when the category can't be confidently detected.",
+
+  "footer_text": "📢 Join for more deals: [your channel link]",
+  "show_pricehistoryapp_link": true,
+  "_show_pricehistoryapp_link_help": "Adds a link to pricehistoryapp.com so readers can independently verify price trends. Links to their general site, not a deep-link to the exact product."
+}
