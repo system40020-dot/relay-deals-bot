@@ -49,7 +49,7 @@ def save_state(state):
         print(f"Error saving state file: {e}")
 
 
-# ================= LINK RESOLVER & CLEANER =================
+# ================= LINK & METADATA UTILITIES =================
 def extract_links_and_entities(msg):
     text = msg.get("caption") or msg.get("text") or ""
     entities = msg.get("caption_entities") or msg.get("entities") or []
@@ -71,85 +71,48 @@ def extract_links_and_entities(msg):
     return unique_urls
 
 
-def resolve_and_clean_url(url):
-    """
-    Expands short links (fkrt.cc, dl.flipkart.com/s/) and returns:
-    (expanded_url, clean_price_history_url, slug_title)
-    """
-    expanded_url = url
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    }
+def get_canonical_flipkart_url(url):
+    """Converts raw expanded Flipkart links to a clean product URL for Price History."""
+    if not url or "flipkart.com" not in url.lower():
+        return None
+    if "/s/" in url or "fkrt.cc" in url:
+        return None  # Still a short link
 
-    try:
-        session = requests.Session()
-        resp = session.head(url, headers=headers, allow_redirects=True, timeout=8)
-        if resp.url:
-            expanded_url = resp.url
-        if expanded_url == url or "fkrt.cc" in expanded_url or "/s/" in expanded_url:
-            resp_get = session.get(url, headers=headers, allow_redirects=True, stream=True, timeout=8)
-            if resp_get.url:
-                expanded_url = resp_get.url
-            resp_get.close()
-    except Exception as e:
-        print(f"  [!] URL expansion warning ({url}): {e}")
-
-    clean_ph_url = expanded_url
-    slug_title = None
-
-    if "flipkart.com" in expanded_url.lower():
-        clean_ph_url = re.sub(r'https?://dl\.flipkart\.com/(?:dl/)?', 'https://www.flipkart.com/', expanded_url, flags=re.IGNORECASE)
+    itm_match = re.search(r'/(?:p|dp)/(itm[a-zA-Z0-9]+)', url)
+    pid_match = re.search(r'(pid=[A-Za-z0-9]+)', url)
+    
+    pid_str = f"?{pid_match.group(1)}" if pid_match else ""
+    
+    if itm_match:
+        return f"https://www.flipkart.com/p/{itm_match.group(1)}{pid_str}"
         
-        # Extract PID
-        pid_match = re.search(r'(pid=[A-Za-z0-9]+)', expanded_url)
-        pid_str = f"?{pid_match.group(1)}" if pid_match else ""
-
-        # Extract Item ID
-        itm_match = re.search(r'/(?:p|dp)/(itm[a-zA-Z0-9]+)', expanded_url)
-        
-        # Extract Title Slug
-        slug_match = re.search(r'flipkart\.com/([^/]+)/(?:p|dp)/', expanded_url, re.IGNORECASE)
-        if slug_match:
-            slug_raw = slug_match.group(1)
-            slug_title = slug_raw.replace('-', ' ').strip().title()
-
-        if itm_match:
-            itm_id = itm_match.group(1)
-            clean_ph_url = f"https://www.flipkart.com/p/{itm_id}{pid_str}"
-        else:
-            clean_ph_url = re.sub(r'(&|\?)(cmpid|hl_lid|ctx|store|fm|_refId|_appId)=[^&]+', '', clean_ph_url)
-
-    elif "amazon" in expanded_url.lower():
-        dp_match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url, re.IGNORECASE)
-        if dp_match:
-            asin = dp_match.group(1)
-            clean_ph_url = f"https://www.amazon.in/dp/{asin}"
-        
-        amz_slug = re.search(r'amazon\.[a-z.]+/(?:[^/]+/)?dp/([^/]+)', expanded_url, re.IGNORECASE)
-        if amz_slug and not amz_slug.group(1).startswith('B0'):
-            slug_title = amz_slug.group(1).replace('-', ' ').strip().title()
-
-    return expanded_url, clean_ph_url, slug_title
+    clean = re.sub(r'https?://dl\.flipkart\.com/(?:dl/)?', 'https://www.flipkart.com/', url)
+    clean = re.sub(r'(&|\?)(cmpid|hl_lid|ctx|store|fm|_refId|_appId)=[^&]+', '', clean)
+    return clean
 
 
-def build_price_history_url(clean_ph_url):
-    """Builds a 100% working PriceHistoryApp search link without 404 errors."""
-    if clean_ph_url and clean_ph_url.startswith("http") and "pricehistory" not in clean_ph_url:
-        encoded_target = urllib.parse.quote(clean_ph_url, safe='')
-        return f"https://pricehistoryapp.com/search?q={encoded_target}"
-    return DEFAULT_PRICE_HISTORY_LINK
+def build_price_history_link(canonical_url, title):
+    """Builds Price History link. Guaranteed never to produce a 404 page."""
+    if canonical_url and ("flipkart.com/p/" in canonical_url or "amazon.in/dp/" in canonical_url):
+        encoded = urllib.parse.quote(canonical_url, safe='')
+        return f"https://pricehistoryapp.com/search?q={encoded}"
+    elif title and title != "SPECIAL OFFER DEAL":
+        # Search by product title if short link couldn't be unshortened over network
+        encoded_title = urllib.parse.quote(title, safe='')
+        return f"https://pricehistoryapp.com/search?q={encoded_title}"
+    else:
+        return DEFAULT_PRICE_HISTORY_LINK
 
 
 def get_product_emoji(text):
     t = text.lower()
-    if any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "soundbar", "jbl", "sony", "zebronics", "boat"]):
+    if any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "soundbar", "zebronics", "boat", "sony", "jbl"]):
         return "🎧"
     elif any(k in t for k in ["cashew", "kaju", "dry fruit", "almond", "protein", "fitness", "treadmill", "cycle", "supplement", "whey"]):
         return "🥔" if "cashew" in t or "kaju" in t else "🏋️"
-    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "chronograph", "titan", "fastrack", "casio", "noise"]):
+    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "titan", "fastrack", "casio", "noise"]):
         return "⌚"
-    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "charger", "poco", "vivo", "oppo"]):
+    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "poco", "vivo", "oppo"]):
         return "📱"
     elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "crocs", "bata", "campus"]):
         return "👟"
@@ -161,35 +124,40 @@ def get_product_emoji(text):
         return "🛍️"
 
 
-def extract_clean_title(raw_text, web_page_title, slug_title):
-    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-    valid_text_lines = []
-
+def extract_title(raw_text, web_page, deal_link):
+    # 1. Title typed in Staging message
+    lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
+    text_lines = []
     for line in lines:
-        if re.match(r'^https?://[^\s]+$', line.strip()):
+        if re.match(r'^https?://[^\s]+$', line):
             continue
-            
         if any(hdr in line.lower() for hdr in ["earnkaro", "grab deals", "loot deals", "join for more"]):
             continue
-
         line_no_url = re.sub(r'https?://[^\s]+', '', line).strip()
         line_clean = re.sub(r'^(GRAB|LOOT|DEAL|OFFER|HOT|SPECIAL)\s*:\s*', '', line_no_url, flags=re.IGNORECASE).strip()
         line_clean = re.sub(r'^[^\w\s]+', '', line_clean).strip()
-        
-        if line_clean and not any(ign in line_clean.lower() for ign in ["lighting deal", "lowest price", "buy more save more"]):
-            valid_text_lines.append(line_clean)
+        if line_clean and not any(ign in line_clean.lower() for ign in ["lighting deal", "lowest price"]):
+            text_lines.append(line_clean)
+            
+    if text_lines:
+        return " ".join(text_lines).upper(), get_product_emoji(raw_text + " " + " ".join(text_lines))
 
-    if valid_text_lines:
-        title = " ".join(valid_text_lines)
-    elif web_page_title:
-        title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon).*$', '', web_page_title).strip()
-    elif slug_title:
-        title = slug_title
-    else:
-        title = "SPECIAL OFFER DEAL"
+    # 2. Title from Telegram's cached web_page preview card
+    wp_title = web_page.get("title")
+    if wp_title:
+        clean_wp = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|At Best).*$', '', wp_title).strip()
+        if len(clean_wp) > 3:
+            return clean_wp.upper(), get_product_emoji(clean_wp)
 
-    emoji = get_product_emoji(raw_text + " " + title)
-    return title.upper(), emoji
+    # 3. Title from URL slug if available
+    expanded_url = web_page.get("url") or deal_link
+    slug_match = re.search(r'flipkart\.com/([^/]+)/(?:p|dp)/', expanded_url, re.IGNORECASE)
+    if slug_match:
+        slug = slug_match.group(1).replace('-', ' ').strip()
+        if len(slug) > 3:
+            return slug.upper(), get_product_emoji(slug)
+
+    return "SPECIAL OFFER DEAL", "🛍️"
 
 
 def format_caption(title, emoji, deal_link):
@@ -301,43 +269,46 @@ def process_message(msg):
         if any(domain in url.lower() for domain in ["pricehistory", "pricetracker"]):
             explicit_price_history_link = url
         elif not deal_link:
-            deal_link = url  # Strictly keeps your short affiliate link!
+            deal_link = url  # Keeps original short affiliate link
             
     if not deal_link:
         print("  [-] Skipped: No product link found in message.")
         return
 
-    # Expand short link for Price History search and URL slug title parsing
-    expanded_url, clean_ph_url, slug_title = resolve_and_clean_url(deal_link)
+    # Extract expanded URL from Telegram's web_page object
+    telegram_expanded_url = web_page.get("url")
+    canonical_url = get_canonical_flipkart_url(telegram_expanded_url or deal_link)
 
-    # Build direct Price History search URL
+    # Title & Emoji
+    title, emoji = extract_title(raw_text, web_page, deal_link)
+
+    # Build Price History Link (Guaranteed no 404)
     if explicit_price_history_link:
         price_history_link = explicit_price_history_link
     else:
-        price_history_link = build_price_history_url(clean_ph_url)
+        price_history_link = build_price_history_link(canonical_url, title)
 
-    # Clean title (preserves short deal_link for BUY NOW)
-    web_page_title = web_page.get("title")
-    title, emoji = extract_clean_title(raw_text, web_page_title, slug_title)
+    # Format Caption with short deal_link
     caption = format_caption(title, emoji, deal_link)
     
     posted = False
     
-    # Priority 1: Direct photo uploaded in Staging Channel message
+    # Priority 1: Image directly attached to Staging message
     photos = msg.get("photo")
     if photos:
         file_url = get_telegram_file_url(photos[-1]["file_id"])
         if file_url:
             posted = post_photo(file_url, caption, price_history_link)
 
-    # Priority 2: Telegram's cached webpage preview photo
+    # Priority 2: Photo from Telegram's cached web_page preview
     if not posted and web_page.get("photo"):
-        web_photo_file_id = web_page["photo"][-1]["file_id"]
-        file_url = get_telegram_file_url(web_photo_file_id)
-        if file_url:
-            posted = post_photo(file_url, caption, price_history_link)
+        wp_photos = web_page.get("photo")
+        if wp_photos:
+            file_url = get_telegram_file_url(wp_photos[-1]["file_id"])
+            if file_url:
+                posted = post_photo(file_url, caption, price_history_link)
 
-    # Priority 3: Fallback text-only post
+    # Priority 3: Text Post
     if not posted:
         post_text(caption, price_history_link)
 
@@ -398,3 +369,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
