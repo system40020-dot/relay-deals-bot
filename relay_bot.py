@@ -179,6 +179,9 @@ def extract_links_from_post(post):
 # Known affiliate/shortener domains -- prefer these over a bare original
 # product page link when a message contains more than one URL.
 PREFERRED_LINK_DOMAINS = [
+    # Real EK Affiliaters shortener domains (confirmed from actual staging posts)
+    "myntr.it", "bitli.in", "ajiio.in", "fkrt.cc",
+    # Other common Indian affiliate/shortener domains, kept as a safety net
     "amzn.to", "fkrt.it", "bit.ly", "ekaro.in", "ekaro-api.affiliaters.in",
     "cuelinks.com", "dl.flipkart.com", "tinyurl.com", "cutt.ly", "rebrand.ly",
 ]
@@ -502,8 +505,7 @@ def main():
             # is never lost even if a later post in this same batch crashes
             state["processed_ids"] = list(processed_ids)[-200:]  # cap growth
             save_json(STATE_FILE, state)
-
-        except Exception as e:
+       except Exception as e:
             # one bad post should never take down the whole run or cause
             # already-relayed posts to be silently lost/reprocessed
             print(f"  [error] Failed to process a post, skipping it: {e}")
@@ -512,9 +514,9 @@ def main():
                 state["processed_ids"] = list(processed_ids)[-200:]
                 save_json(STATE_FILE, state)
             continue
-
-    print("Done.")
-
+       
+ print("Done.") 
 
 if __name__ == "__main__":
     main()
+   
