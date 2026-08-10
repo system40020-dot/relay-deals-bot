@@ -1,3 +1,17 @@
+from flask import Flask
+import threading
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=8080)
+
+# Running the dummy web server in a separate thread so it runs alongside your bot
+threading.Thread(target=run_web).start()
 import os
 import json
 import re
