@@ -505,7 +505,7 @@ def main():
             # is never lost even if a later post in this same batch crashes
             state["processed_ids"] = list(processed_ids)[-200:]  # cap growth
             save_json(STATE_FILE, state)
-     except Exception as e:
+        except Exception as e:
             # one bad post should never take down the whole run or cause
             # already-relayed posts to be silently lost/reprocessed
             print(f"  [error] Failed to process a post, skipping it: {e}")
