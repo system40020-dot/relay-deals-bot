@@ -47,7 +47,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 RELAY_BOT_TOKEN = os.environ.get("RELAY_BOT_TOKEN", "").strip()
-STAGING_CHAT_ID = os.environ.get("STAGING_CHAT_ID", "").strip()
+STAGING_CHAT_ID = os.environ.get("STAGING_CHAT_ID", "").strip().strip("'\"")
 MAIN_BOT_TOKEN = os.environ.get("MAIN_BOT_TOKEN", "").strip()
 MAIN_CHAT_ID = os.environ.get("MAIN_CHAT_ID", "").strip()
 
@@ -507,3 +507,13 @@ def main():
             # one bad post should never take down the whole run or cause
             # already-relayed posts to be silently lost/reprocessed
             print(f"  [error] Failed to process a post, skipping it: {e}")
+            if msg_id:
+                processed_ids.add(msg_id)
+                state["processed_ids"] = list(processed_ids)[-200:]
+                save_json(STATE_FILE, state)
+            continue
+
+    print("Done.")
+
+
+if __name__ == "__main__":
