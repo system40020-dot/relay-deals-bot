@@ -155,8 +155,6 @@ def fetch_product_metadata(url):
             "price": None,
             "link": url
         }
-        
-        
 
 def get_canonical_url(expanded_url):
     if not expanded_url: return None
