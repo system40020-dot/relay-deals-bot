@@ -91,57 +91,73 @@ def unshorten_link(short_url):
     except Exception:
         return short_url
 
-import asyncio
-from playwright.async_api import async_playwright
-import re
-import html
-
-async def fetch_product_metadata(url):
-    """Playwright-based robust fetcher to bypass basic bot detections using a headless browser."""
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True, 
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-        
-        try:
-            await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+def fetch_product_metadata_with_playwright(url):
+    """Uses Playwright real headless browser with advanced timeout and fallback extraction."""
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True, 
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                device_scale_factor=1,
+            )
+            page = context.new_page()
+            
+            # Navigate with extended timeout
+            page.goto(url, timeout=40000, wait_until="networkidle")
+            time.sleep(2) # Extra buffer for dynamic tags
+            
             final_url = page.url
-            
-            # Extract metadata using JavaScript evaluation
-            title = await page.evaluate("() => document.querySelector('meta[property=\"og:title\"]')?.content || document.title")
-            image_url = await page.evaluate("() => document.querySelector('meta[property=\"og:image\"]')?.content || ''")
-            
-            page_text = await page.evaluate("() => document.body.innerText")
-            price_match = re.search(r'(?:₹|Rs\.?)\s*([\d,]+\.?\d*)', page_text)
-            price = price_match.group(0) if price_match else None
-            
-            if not title or "Access Denied" in title or "Robot" in title:
-                title = "SPECIAL HANDPICKED LOOT"
-            else:
-                title = html.unescape(title.strip())
+            html_content = page.content()
+            browser.close()
 
-            await browser.close()
-            return {
-                "title": title,
-                "image_url": image_url if image_url else None,
-                "price": price,
-                "link": final_url
-            }
-            
-        except Exception as e:
-            print(f"Playwright Error: {e}")
-            await browser.close()
-            return {
-                "title": "SPECIAL HANDPICKED LOOT",
-                "image_url": None,
-                "price": None,
-                "link": url
-            }
+            title, image_url, price, discount_text = None, None, None, None
+
+            # 1. Extract Title
+            og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if og_title:
+                title = html.unescape(og_title.group(1)).strip()
+            else:
+                tag_title = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
+                if tag_title:
+                    title = html.unescape(tag_title.group(1)).strip()
+
+            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
+                # Try heading tag fallback
+                h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
+                if h1_match:
+                    clean_h1 = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip()
+                    if clean_h1:
+                        title = html.unescape(clean_h1)
+
+            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
+                title = "SPECIAL OFFER DEAL"
+
+            # 2. Extract Image
+            og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if og_image:
+                img_candidate = og_image.group(1).strip()
+                if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite"]):
+                    image_url = img_candidate
+
+            # 3. Extract Price
+            price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
+            if price_match:
+                try: price = float(price_match.group(1).replace(",", ""))
+                except: pass
+
+            # 4. Extract Discount
+            disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
+            if disc_match: discount_text = disc_match.group(1)
+
+            return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": final_url}
+    except Exception as e:
+        print(f"Playwright detailed error: {e}")
+        return None
+     
             
 
 def get_canonical_url(expanded_url):
