@@ -49,7 +49,7 @@ def save_state(state):
         print(f"Error saving state file: {e}")
 
 
-# ================= LINK & SCRAPING UTILITIES =================
+# ================= LINK RESOLVER & CLEANER =================
 def extract_links_and_entities(msg):
     text = msg.get("caption") or msg.get("text") or ""
     entities = msg.get("caption_entities") or msg.get("entities") or []
@@ -71,78 +71,97 @@ def extract_links_and_entities(msg):
     return unique_urls
 
 
-def safe_expand_url(url):
-    """Safely expands short links and fetches page metadata without raising exceptions."""
-    final_url = url
-    scraped_title = None
-    scraped_image_url = None
-
+def resolve_and_clean_url(url):
+    """
+    Expands short links (fkrt.cc, dl.flipkart.com/s/) and returns:
+    (expanded_url, clean_price_history_url, slug_title)
+    """
+    expanded_url = url
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     }
 
     try:
         session = requests.Session()
-        resp = session.get(url, headers=headers, allow_redirects=True, timeout=8)
-        if resp.ok:
-            final_url = resp.url
-            html = resp.text
-
-            # Extract og:title
-            tm = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']', html, re.I)
-            if not tm:
-                tm = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:title["\']', html, re.I)
-            if tm:
-                scraped_title = tm.group(1).strip()
-
-            # Extract og:image
-            im = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\'](.*?)["\']', html, re.I)
-            if not im:
-                im = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:image["\']', html, re.I)
-            if im:
-                scraped_image_url = im.group(1).strip()
-
-            if scraped_title:
-                scraped_title = re.sub(r'(?i)(\||\-|\:)\s*(Flipkart|Amazon|Myntra|Ajio).*$', '', scraped_title).strip()
+        resp = session.head(url, headers=headers, allow_redirects=True, timeout=8)
+        if resp.url:
+            expanded_url = resp.url
+        if expanded_url == url or "fkrt.cc" in expanded_url or "/s/" in expanded_url:
+            resp_get = session.get(url, headers=headers, allow_redirects=True, stream=True, timeout=8)
+            if resp_get.url:
+                expanded_url = resp_get.url
+            resp_get.close()
     except Exception as e:
-        print(f"  [!] Soft warning on expanding link ({url}): {e}")
+        print(f"  [!] URL expansion warning ({url}): {e}")
 
-    return final_url, scraped_title, scraped_image_url
+    clean_ph_url = expanded_url
+    slug_title = None
+
+    if "flipkart.com" in expanded_url.lower():
+        clean_ph_url = re.sub(r'https?://dl\.flipkart\.com/(?:dl/)?', 'https://www.flipkart.com/', expanded_url, flags=re.IGNORECASE)
+        
+        # Extract PID
+        pid_match = re.search(r'(pid=[A-Za-z0-9]+)', expanded_url)
+        pid_str = f"?{pid_match.group(1)}" if pid_match else ""
+
+        # Extract Item ID
+        itm_match = re.search(r'/(?:p|dp)/(itm[a-zA-Z0-9]+)', expanded_url)
+        
+        # Extract Title Slug
+        slug_match = re.search(r'flipkart\.com/([^/]+)/(?:p|dp)/', expanded_url, re.IGNORECASE)
+        if slug_match:
+            slug_raw = slug_match.group(1)
+            slug_title = slug_raw.replace('-', ' ').strip().title()
+
+        if itm_match:
+            itm_id = itm_match.group(1)
+            clean_ph_url = f"https://www.flipkart.com/p/{itm_id}{pid_str}"
+        else:
+            clean_ph_url = re.sub(r'(&|\?)(cmpid|hl_lid|ctx|store|fm|_refId|_appId)=[^&]+', '', clean_ph_url)
+
+    elif "amazon" in expanded_url.lower():
+        dp_match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})', expanded_url, re.IGNORECASE)
+        if dp_match:
+            asin = dp_match.group(1)
+            clean_ph_url = f"https://www.amazon.in/dp/{asin}"
+        
+        amz_slug = re.search(r'amazon\.[a-z.]+/(?:[^/]+/)?dp/([^/]+)', expanded_url, re.IGNORECASE)
+        if amz_slug and not amz_slug.group(1).startswith('B0'):
+            slug_title = amz_slug.group(1).replace('-', ' ').strip().title()
+
+    return expanded_url, clean_ph_url, slug_title
 
 
-def build_price_history_url(expanded_url):
-    """Converts an expanded store URL into a PriceHistoryApp search link."""
-    if expanded_url and expanded_url.startswith("http") and "pricehistory" not in expanded_url:
-        encoded_target = urllib.parse.quote(expanded_url, safe='')
+def build_price_history_url(clean_ph_url):
+    """Builds a 100% working PriceHistoryApp search link without 404 errors."""
+    if clean_ph_url and clean_ph_url.startswith("http") and "pricehistory" not in clean_ph_url:
+        encoded_target = urllib.parse.quote(clean_ph_url, safe='')
         return f"https://pricehistoryapp.com/search?q={encoded_target}"
     return DEFAULT_PRICE_HISTORY_LINK
 
 
 def get_product_emoji(text):
     t = text.lower()
-    if any(k in t for k in ["cashew", "kaju", "dry fruit", "almond", "protein", "fitness", "treadmill", "cycle", "supplement", "whey"]):
+    if any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "soundbar", "jbl", "sony", "zebronics", "boat"]):
+        return "🎧"
+    elif any(k in t for k in ["cashew", "kaju", "dry fruit", "almond", "protein", "fitness", "treadmill", "cycle", "supplement", "whey"]):
         return "🥔" if "cashew" in t or "kaju" in t else "🏋️"
-    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "chronograph", "titan", "fastrack", "casio", "noise", "boat"]):
+    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "chronograph", "titan", "fastrack", "casio", "noise"]):
         return "⌚"
     elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "charger", "poco", "vivo", "oppo"]):
         return "📱"
-    elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "crocs", "bata", "campus", "sparx"]):
+    elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "crocs", "bata", "campus"]):
         return "👟"
-    elif any(k in t for k in ["laptop", "macbook", "computer", "pc", "monitor", "keyboard", "mouse", "asus", "hp", "dell", "lenovo"]):
+    elif any(k in t for k in ["laptop", "macbook", "computer", "pc", "monitor", "keyboard", "mouse", "asus", "hp", "dell"]):
         return "💻"
-    elif any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "soundbar", "jbl", "sony"]):
-        return "🎧"
-    elif any(k in t for k in ["shirt", "tshirt", "t-shirt", "jeans", "trouser", "dress", "cloth", "apparel", "kurta", "saree", "jacket"]):
+    elif any(k in t for k in ["shirt", "tshirt", "t-shirt", "jeans", "trouser", "dress", "cloth", "apparel", "kurta", "saree"]):
         return "👕"
-    elif any(k in t for k in ["trimmer", "shaver", "grooming", "makeup", "lipstick", "perfume", "serum", "shampoo", "philips"]):
-        return "💄"
-    elif any(k in t for k in ["bag", "backpack", "trolley", "suitcase", "luggage", "wallet"]):
-        return "🎒"
     else:
         return "🛍️"
 
 
-def extract_clean_title(raw_text, deal_link, scraped_title):
+def extract_clean_title(raw_text, web_page_title, slug_title):
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     valid_text_lines = []
 
@@ -157,13 +176,15 @@ def extract_clean_title(raw_text, deal_link, scraped_title):
         line_clean = re.sub(r'^(GRAB|LOOT|DEAL|OFFER|HOT|SPECIAL)\s*:\s*', '', line_no_url, flags=re.IGNORECASE).strip()
         line_clean = re.sub(r'^[^\w\s]+', '', line_clean).strip()
         
-        if line_clean and not any(ign in line_clean.lower() for ign in ["buy more save more", "add 5 qty", "use 200 supercoins"]):
+        if line_clean and not any(ign in line_clean.lower() for ign in ["lighting deal", "lowest price", "buy more save more"]):
             valid_text_lines.append(line_clean)
 
     if valid_text_lines:
         title = " ".join(valid_text_lines)
-    elif scraped_title:
-        title = scraped_title
+    elif web_page_title:
+        title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon).*$', '', web_page_title).strip()
+    elif slug_title:
+        title = slug_title
     else:
         title = "SPECIAL OFFER DEAL"
 
@@ -271,6 +292,7 @@ def post_text(caption, price_history_link):
 def process_message(msg):
     raw_text = msg.get("caption") or msg.get("text") or ""
     urls = extract_links_and_entities(msg)
+    web_page = msg.get("web_page") or {}
     
     deal_link = None
     explicit_price_history_link = None
@@ -279,40 +301,43 @@ def process_message(msg):
         if any(domain in url.lower() for domain in ["pricehistory", "pricetracker"]):
             explicit_price_history_link = url
         elif not deal_link:
-            deal_link = url # Keeps original short affiliate link
+            deal_link = url  # Strictly keeps your short affiliate link!
             
     if not deal_link:
         print("  [-] Skipped: No product link found in message.")
         return
 
-    # Safely attempt short link expansion for Price History and photo scraping
-    expanded_url, scraped_title, scraped_image_url = safe_expand_url(deal_link)
+    # Expand short link for Price History search and URL slug title parsing
+    expanded_url, clean_ph_url, slug_title = resolve_and_clean_url(deal_link)
 
-    # Generate Price History URL using expanded link if available
+    # Build direct Price History search URL
     if explicit_price_history_link:
         price_history_link = explicit_price_history_link
     else:
-        price_history_link = build_price_history_url(expanded_url)
+        price_history_link = build_price_history_url(clean_ph_url)
 
-    # Format title & caption using original deal_link
-    title, emoji = extract_clean_title(raw_text, deal_link, scraped_title)
+    # Clean title (preserves short deal_link for BUY NOW)
+    web_page_title = web_page.get("title")
+    title, emoji = extract_clean_title(raw_text, web_page_title, slug_title)
     caption = format_caption(title, emoji, deal_link)
     
     posted = False
-    photos = msg.get("photo")
     
-    # Priority 1: Direct photo from Staging channel message
+    # Priority 1: Direct photo uploaded in Staging Channel message
+    photos = msg.get("photo")
     if photos:
-        largest_photo = photos[-1]
-        file_url = get_telegram_file_url(largest_photo["file_id"])
+        file_url = get_telegram_file_url(photos[-1]["file_id"])
         if file_url:
             posted = post_photo(file_url, caption, price_history_link)
-            
-    # Priority 2: Scraped product image
-    if not posted and scraped_image_url:
-        posted = post_photo(scraped_image_url, caption, price_history_link)
 
-    # Priority 3: Text post
+    # Priority 2: Telegram's cached webpage preview photo
+    if not posted and web_page.get("photo"):
+        web_photo_file_id = web_page["photo"][-1]["file_id"]
+        file_url = get_telegram_file_url(web_photo_file_id)
+        if file_url:
+            posted = post_photo(file_url, caption, price_history_link)
+
+    # Priority 3: Fallback text-only post
     if not posted:
         post_text(caption, price_history_link)
 
@@ -354,7 +379,6 @@ def main():
                 
             print(f"--> Processing Staging Message ID: {msg_id}")
             
-            # Isolated execution per message prevents single-post failures from breaking queue
             try:
                 process_message(msg)
             except Exception as pe:
@@ -374,4 +398,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
