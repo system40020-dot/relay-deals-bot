@@ -1,5 +1,12 @@
 from flask import Flask
 import threading
+import os
+import json
+import re
+import random
+import requests
+import urllib.parse
+import html
 
 app = Flask('')
 
@@ -10,14 +17,8 @@ def home():
 def run_web():
     app.run(host='0.0.0.0', port=8080)
 
-# Running the dummy web server in a separate thread so it runs alongside your bot
+# Running the dummy web server in a separate thread
 threading.Thread(target=run_web).start()
-import os
-import json
-import re
-import random
-import requests
-import urllib.parse
 
 # ================= CONFIGURATION =================
 RELAY_BOT_TOKEN = os.getenv("RELAY_BOT_TOKEN", "")
@@ -29,11 +30,15 @@ MAIN_CHAT_ID = os.getenv("MAIN_CHAT_ID", "")
 CHANNEL_HANDLE = "@loot_hacked"
 DEFAULT_PRICE_HISTORY_LINK = "https://pricehistoryapp.com/"
 
+# Dynamic Title Rotation Pool (Category-wise multiple options)
 DEAL_HEADERS = [
-    "⚡ LIGHTNING DEAL ⚡",
+    "🔥 MEGA LOOT DEAL ALERT! 🔥",
+    "⚡ LIGHTNING FAST OFFER ⚡",
+    "💥 CRAZY PRICE DROP 💥",
+    "🌟 SPECIAL HANDPICKED LOOT 🌟",
+    "🚀 HURRY! MASSIVE DISCOUNT 🚀",
+    "💎 BEST VALUE DEAL FOUND 💎",
     "📉 LOWEST PRICE EVER 📉",
-    "🔥 LOOT DEAL OF THE DAY 🔥",
-    "💥 SUPER SAVER DEAL 💥",
     "🚨 HOT DEAL ALERT 🚨"
 ]
 
@@ -44,7 +49,7 @@ STATE_FILE = "state.json"
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
-            with open(STATE_FILE, "r") as f:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data.get("processed_ids"), list):
                     return data
@@ -55,13 +60,13 @@ def load_state():
 
 def save_state(state):
     try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2)
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving state: {e}")
 
 
-# ================= ADVANCED LINK UNSHORTENER =================
+# ================= LINK & SCRAPING UTILS =================
 def extract_all_links(msg):
     text = msg.get("caption") or msg.get("text") or ""
     entities = msg.get("caption_entities") or msg.get("entities") or []
@@ -80,9 +85,6 @@ def extract_all_links(msg):
 
 
 def unshorten_link(short_url):
-    """
-    Handles standard redirects AND bitli.in / linkredirect.in / earnkaro HTML meta refreshes.
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
@@ -91,7 +93,6 @@ def unshorten_link(short_url):
         resp = session.get(short_url, headers=headers, allow_redirects=True, timeout=10)
         final_url = resp.url
 
-        # Check for HTML Meta Refresh (Common in bitli.in & linkredirect.in)
         if "bitli.in" in final_url or "linkredirect" in final_url or "earnkaro" in final_url:
             meta_match = re.search(r'url=(https?://[^\s"\']+)', resp.text, re.IGNORECASE)
             if meta_match:
@@ -105,6 +106,57 @@ def unshorten_link(short_url):
         return short_url
 
 
+def fetch_product_metadata(url):
+    """
+    Scrapes real title, price, original price, discount, and image from the product page.
+    """
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        html_content = resp.text
+        final_url = resp.url
+
+        title = None
+        image_url = None
+        price = None
+        original_price = None
+        discount_text = None
+
+        # OpenGraph Meta Tags
+        og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+        if og_title:
+            title = html.unescape(og_title.group(1))
+
+        og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+        if og_image:
+            image_url = og_image.group(1)
+
+        # Price extraction heuristics
+        price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
+        if price_match:
+            try:
+                price = float(price_match.group(1).replace(",", ""))
+            except ValueError:
+                pass
+
+        # Discount extraction heuristics
+        disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
+        if disc_match:
+            discount_text = disc_match.group(1)
+
+        return {
+            "title": title,
+            "image_url": image_url,
+            "price": price,
+            "original_price": original_price,
+            "discount": discount_text,
+            "link": final_url
+        }
+    except Exception as e:
+        print(f"  [!] Metadata fetch error: {e}")
+        return None
+
+
 def get_canonical_url_for_price_history(expanded_url):
     if not expanded_url or not expanded_url.startswith("http"):
         return None
@@ -116,10 +168,8 @@ def get_canonical_url_for_price_history(expanded_url):
         itm_match = re.search(r'/(?:p|dp)/(itm[a-zA-Z0-9]+)', expanded_url)
         pid_match = re.search(r'(pid=[A-Za-z0-9]+)', expanded_url)
         pid_str = f"?{pid_match.group(1)}" if pid_match else ""
-        
         if itm_match:
             return f"https://www.flipkart.com/p/{itm_match.group(1)}{pid_str}"
-            
         clean = re.sub(r'https?://dl\.flipkart\.com/(?:dl/)?', 'https://www.flipkart.com/', expanded_url)
         clean = re.sub(r'(&|\?)(cmpid|hl_lid|ctx|store|fm|_refId|_appId)=[^&]+', '', clean)
         return clean
@@ -142,12 +192,12 @@ def build_price_history_link(canonical_url, product_title):
     return DEFAULT_PRICE_HISTORY_LINK
 
 
-# ================= CONTENT PARSER =================
+# ================= FORMATTING & CAPTION =================
 def get_product_emoji(text):
     t = text.lower()
-    if any(k in t for k in ["beauty", "decor", "home", "cosmetic", "cream", "lotion", "makeup", "mall"]):
+    if any(k in t for k in ["beauty", "decor", "home", "cosmetic", "cream", "lotion", "makeup"]):
         return "💄" if "beauty" in t or "cosmetic" in t else "🏠"
-    elif any(k in t for k in ["headphone", "earphone", "audio", "speaker", "zebronics", "boat"]):
+    elif any(k in t for k in ["headphone", "earphone", "audio", "speaker", "boat"]):
         return "🎧"
     elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "realme", "5g"]):
         return "📱"
@@ -158,59 +208,31 @@ def get_product_emoji(text):
     return "🛍️"
 
 
-def parse_post_details(raw_text, web_page_data, expanded_url):
-    lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
-    title_parts = []
-    coupon_str = None
-
-    for line in lines:
-        if re.match(r'^https?://[^\s]+$', line):
-            continue
-            
-        if re.search(r'(?i)(use|apply)\s*code', line) or re.search(r'(?i)^code\s*:', line):
-            coupon_str = line.strip()
-            continue
-
-        if any(ign in line.lower() for ign in ["earnkaro", "grab deals", "loot deals", "join for more"]):
-            continue
-
-        line_no_url = re.sub(r'https?://[^\s]+', '', line).strip()
-        clean = re.sub(r'^(GRAB|LOOT|DEAL|OFFER|HOT|SPECIAL)\s*:\s*', '', line_no_url, flags=re.I).strip()
-        clean = re.sub(r'^[^\w\s]+', '', clean).strip()
-
-        if clean and not any(k in clean.lower() for k in ["lighting deal", "lowest price"]):
-            title_parts.append(clean)
-
-    if title_parts:
-        title = " | ".join(title_parts).upper()
-    elif web_page_data.get("title"):
-        clean_wp = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|At Best).*$', '', web_page_data["title"]).strip()
-        title = clean_wp.upper()
-    else:
-        slug_match = re.search(r'flipkart\.com/([^/]+)/(?:p|dp)/', expanded_url, re.I)
-        if slug_match:
-            title = slug_match.group(1).replace('-', ' ').strip().upper()
-        else:
-            title = "SPECIAL OFFER DEAL"
-
-    emoji = get_product_emoji(raw_text + " " + title)
-    return title, coupon_str, emoji
-
-
-def format_caption(title, coupon_str, emoji, affiliate_short_link):
+def format_caption(title, coupon_str, emoji, affiliate_short_link, scraped_data):
+    # Dynamic random title rotation from category pool
     header = random.choice(DEAL_HEADERS)
-    caption = [
+    
+    lines = [
         f"<b>{header}</b>\n",
-        f"👀 {emoji} <b>{title}</b>\n"
+        f"👀 {emoji} <b>{html.escape(title)}</b>\n"
     ]
-    if coupon_str:
-        caption.append(f"🏷️ <b>{coupon_str.upper()}</b>\n")
 
-    caption.extend([
+    # Real price and discount handling
+    if scraped_data and scraped_data.get("price"):
+        price_val = f"₹{scraped_data['price']:,.0f}"
+        disc_val = f" ({scraped_data['discount']})" if scraped_data.get("discount") else ""
+        lines.append(f"💰 Price: <b>{price_val}</b>{disc_val}\n")
+    else:
+        lines.append("💰 Price: <b>Check Live Platform Price</b>\n")
+
+    if coupon_str:
+        lines.append(f"🏷️ <b>{coupon_str.upper()}</b>\n")
+
+    lines.extend([
         f"🛒 <b>BUY NOW:</b> {affiliate_short_link}\n",
         f"📢 <b>JOIN FOR MORE DEALS:</b> {CHANNEL_HANDLE}"
     ])
-    return "\n".join(caption)
+    return "\n".join(lines)
 
 
 def create_price_history_button(ph_link):
@@ -284,20 +306,40 @@ def process_message(msg):
 
     print(f"  [+] Found affiliate link: {affiliate_short_link}")
     
-    # Expand bitli.in / fkrt.cc
     expanded_url = unshorten_link(affiliate_short_link)
     print(f"  [+] Expanded target: {expanded_url}")
     
+    # Fetch real platform metadata (Price, Discount, Image, Title)
+    scraped_data = fetch_product_metadata(expanded_url)
+    
     canonical_url = get_canonical_url_for_price_history(expanded_url)
 
-    title, coupon_str, emoji = parse_post_details(raw_text, web_page, expanded_url)
-    ph_link = explicit_ph or build_price_history_link(canonical_url, title)
-    caption = format_caption(title, coupon_str, emoji, affiliate_short_link)
+    # Title extraction fallback logic
+    title = None
+    if scraped_data and scraped_data.get("title"):
+        clean_wp = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|At Best).*$', '', scraped_data["title"]).strip()
+        title = clean_wp.upper()
+    else:
+        title = "SPECIAL OFFER DEAL"
 
+    coupon_str = None
+    for line in raw_text.split('\n'):
+        if re.search(r'(?i)(use|apply)\s*code', line) or re.search(r'(?i)^code\s*:', line):
+            coupon_str = line.strip()
+            break
+
+    emoji = get_product_emoji(raw_text + " " + title)
+    ph_link = explicit_ph or build_price_history_link(canonical_url, title)
+    
+    caption = format_caption(title, coupon_str, emoji, affiliate_short_link, scraped_data)
+
+    # Image priority: Telegram photo attachment -> Scraped OG image -> Webpage preview photo
     image_url = None
     photos = msg.get("photo")
     if photos:
         image_url = get_telegram_file_url(photos[-1]["file_id"])
+    elif scraped_data and scraped_data.get("image_url"):
+        image_url = scraped_data["image_url"]
     elif web_page.get("photo"):
         wp_p = web_page["photo"]
         if wp_p:
@@ -311,8 +353,6 @@ def main():
     processed_ids = list(state.get("processed_ids", []))
     last_offset = state.get("last_update_id", 0)
 
-    print(f"Checking staging channel updates (Starting Offset: {last_offset})...")
-
     url = f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/getUpdates"
     params = {
         "offset": last_offset + 1,
@@ -323,12 +363,9 @@ def main():
     try:
         resp = requests.get(url, params=params, timeout=20)
         if not resp.ok:
-            print(f"Telegram API Error: {resp.text}")
             return
             
         updates = resp.json().get("result", [])
-        print(f"--> Received {len(updates)} raw update(s) from Telegram.")
-
         for update in updates:
             last_offset = max(last_offset, update["update_id"])
             msg = update.get("channel_post") or update.get("message")
@@ -336,18 +373,13 @@ def main():
                 continue
 
             chat_id = str(msg.get("chat", {}).get("id")).strip()
-            target_id = str(STAGING_CHAT_ID).strip()
-            
-            if chat_id != target_id:
-                print(f"  [-] Chat ID mismatch: got {chat_id}, expected {target_id}")
+            if chat_id != str(STAGING_CHAT_ID).strip():
                 continue
 
             msg_id = msg.get("message_id")
             if msg_id in processed_ids:
-                print(f"  [-] Message {msg_id} already processed.")
                 continue
 
-            print(f"--> Processing Message ID: {msg_id}")
             try:
                 process_message(msg)
             except Exception as pe:
@@ -361,9 +393,7 @@ def main():
     state["processed_ids"] = processed_ids[-200:]
     state["last_update_id"] = last_offset
     save_state(state)
-    print("Execution complete.")
-
 
 if __name__ == "__main__":
     main()
-  
+    
