@@ -8,12 +8,13 @@ import random
 import requests
 import urllib.parse
 import html
+from playwright.sync_api import sync_playwright
 
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running and active!"
+    return "Playwright Bot is running and active!"
 
 def run_web():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
@@ -38,30 +39,6 @@ DEAL_HEADERS = [
     "📉 LOWEST PRICE EVER 📉",
     "🚨 HOT DEAL ALERT 🚨"
 ]
-
-# Advanced Stealth User-Agents (Simulating real modern browsers)
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
-]
-
-def get_stealth_headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
-    }
 
 STATE_FILE = "state.json"
 
@@ -102,62 +79,71 @@ def extract_all_links(msg):
 def unshorten_link(short_url):
     try:
         session = requests.Session()
-        resp = session.get(short_url, headers=get_stealth_headers(), allow_redirects=True, timeout=10)
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = session.get(short_url, headers=headers, allow_redirects=True, timeout=10)
         final_url = resp.url
         if any(x in final_url for x in ["bitli.in", "linkredirect", "earnkaro", "myntr.it", "fkrt.cc", "bit.ly"]):
             meta_match = re.search(r'url=(https?://[^\s"\']+)', resp.text, re.IGNORECASE)
             if meta_match:
-                resp2 = session.get(meta_match.group(1), headers=get_stealth_headers(), allow_redirects=True, timeout=10)
+                resp2 = session.get(meta_match.group(1), headers=headers, allow_redirects=True, timeout=10)
                 final_url = resp2.url
         return final_url
     except Exception:
         return short_url
 
-def fetch_product_metadata(url):
+def fetch_product_metadata_with_playwright(url):
+    """Uses Playwright real headless browser to bypass anti-bot and extract dynamic content."""
     try:
-        session = requests.Session()
-        resp = session.get(url, headers=get_stealth_headers(), timeout=12, allow_redirects=True)
-        html_content = resp.text
-        
-        title, image_url, price, discount_text = None, None, None, None
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800}
+            )
+            page = context.new_page()
+            
+            # Navigate to the target page and wait for network settlement
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            time.sleep(3) # Extra buffer for JS execution
+            
+            final_url = page.url
+            html_content = page.content()
+            browser.close()
 
-        # 1. Advanced Title extraction (Checking multiple meta properties used by Amazon/Flipkart/Myntra)
-        for pattern in [
-            r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']',
-            r'<meta[^>]*name=["\']twitter:title["\'][^>]*content=["\']([^"\']+)["\']',
-            r'<title>(.*?)</title>'
-        ]:
-            match = re.search(pattern, html_content, re.IGNORECASE)
-            if match:
-                val = html.unescape(match.group(1)).strip()
-                if val and val.upper() not in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA"]:
-                    title = val
-                    break
+            title, image_url, price, discount_text = None, None, None, None
 
-        # 2. Advanced Image extraction (Filtering out standard site logos/icons)
-        for pattern in [
-            r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']',
-            r'<meta[^>]*name=["\']twitter:image["\'][^>]*content=["\']([^"\']+)["\']'
-        ]:
-            match = re.search(pattern, html_content, re.IGNORECASE)
-            if match:
-                img_candidate = match.group(1).strip()
-                if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite", "transparent"]):
+            # 1. Extract Title
+            og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if og_title:
+                title = html.unescape(og_title.group(1)).strip()
+            else:
+                tag_title = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
+                if tag_title:
+                    title = html.unescape(tag_title.group(1)).strip()
+
+            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA"]:
+                title = "SPECIAL OFFER DEAL"
+
+            # 2. Extract Image
+            og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if og_image:
+                img_candidate = og_image.group(1).strip()
+                if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite"]):
                     image_url = img_candidate
-                    break
 
-        # 3. Price extraction
-        price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
-        if price_match:
-            try: price = float(price_match.group(1).replace(",", ""))
-            except: pass
+            # 3. Extract Price
+            price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
+            if price_match:
+                try: price = float(price_match.group(1).replace(",", ""))
+                except: pass
 
-        # 4. Discount extraction
-        disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
-        if disc_match: discount_text = disc_match.group(1)
+            # 4. Extract Discount
+            disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
+            if disc_match: discount_text = disc_match.group(1)
 
-        return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": resp.url}
-    except:
+            return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": final_url}
+    except Exception as e:
+        print(f"Playwright error: {e}")
         return None
 
 def get_canonical_url(expanded_url):
@@ -173,17 +159,17 @@ def get_canonical_url(expanded_url):
 def build_price_history_link(canonical_url, title):
     if canonical_url and ("flipkart.com/p/" in canonical_url or "amazon.in/dp/" in canonical_url):
         return f"https://pricehistoryapp.com/search?q={urllib.parse.quote(canonical_url, safe='')}"
-    elif title and title not in ["SPECIAL OFFER DEAL", "MYNTRA", "AMAZON", "FLIPKART"]:
+    elif title and title != "SPECIAL OFFER DEAL":
         return f"https://pricehistoryapp.com/search?q={urllib.parse.quote(title, safe='')}"
     return DEFAULT_PRICE_HISTORY_LINK
 
 # ================= FORMATTING =================
 def get_emoji(text):
     t = text.lower()
-    if any(k in t for k in ["phone", "mobile", "iphone", "5g", "samsung", "oneplus"]): return "📱"
-    if any(k in t for k in ["shoe", "sneaker", "nike", "puma", "adidas", "sandal"]): return "👟"
+    if any(k in t for k in ["phone", "mobile", "iphone", "5g", "samsung"]): return "📱"
+    if any(k in t for k in ["shoe", "sneaker", "nike", "puma", "adidas"]): return "👟"
     if any(k in t for k in ["watch", "smartwatch"]): return "⌚"
-    if any(k in t for k in ["headphone", "audio", "boat", "earbud", "speaker"]): return "🎧"
+    if any(k in t for k in ["headphone", "audio", "boat", "earbud"]): return "🎧"
     return "🛍️"
 
 def format_caption(title, emoji, link, scraped):
@@ -204,7 +190,7 @@ def post_deal(image_url, caption, ph_link):
     keyboard = json.dumps({"inline_keyboard": [[{"text": "📉 Price History 📉", "url": ph_link}]]})
     if image_url:
         try:
-            img_data = requests.get(image_url, headers=get_stealth_headers(), timeout=12).content
+            img_data = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=12).content
             payload = {"chat_id": MAIN_CHAT_ID, "caption": caption, "parse_mode": "HTML", "reply_markup": keyboard}
             r = requests.post(f"https://api.telegram.org/bot{MAIN_BOT_TOKEN}/sendPhoto", data=payload, files={"photo": ("img.jpg", img_data)}, timeout=15)
             if r.ok: return True
@@ -220,14 +206,13 @@ def process_message(msg):
     
     aff_link = urls[0]
     expanded = unshorten_link(aff_link)
-    scraped = fetch_product_metadata(expanded)
+    
+    # Fetch real data using Playwright headless browser
+    scraped = fetch_product_metadata_with_playwright(expanded)
     canonical = get_canonical_url(expanded)
 
-    title = scraped.get("title") if scraped and scraped.get("title") else ""
-    if not title or title.upper() in ["MYNTRA", "AMAZON", "FLIPKART", "ONLINE SHOPPING INDIA"]:
-        title = "SPECIAL OFFER DEAL"
-
-    title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|Myntra).*$', '', title).strip().upper()
+    title = scraped.get("title") if scraped and scraped.get("title") else "SPECIAL OFFER DEAL"
+    title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|Myntra|Boat).*$', '', title).strip().upper()
 
     emoji = get_emoji(title)
     ph_link = build_price_history_link(canonical, title)
@@ -238,14 +223,14 @@ def process_message(msg):
     post_deal(image_url, caption, ph_link)
 
 def background_bot_loop():
-    print("Background bot listener started...")
+    print("Playwright background bot listener started...")
     while True:
         try:
             state = load_state()
             processed = set(state.get("processed_ids", []))
             last_offset = state.get("last_update_id", 0)
 
-            resp = requests.get(f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/getUpdates", params={"offset": last_offset + 1, "timeout": 15}, headers=get_stealth_headers(), timeout=20)
+            resp = requests.get(f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/getUpdates", params={"offset": last_offset + 1, "timeout": 15}, timeout=20)
             if resp.ok:
                 updates = resp.json().get("result", [])
                 for update in updates:
@@ -272,4 +257,4 @@ def background_bot_loop():
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
     background_bot_loop()
-              
+            
