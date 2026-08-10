@@ -12,7 +12,7 @@ STAGING_CHAT_ID = os.getenv("STAGING_CHAT_ID", "-100xxxxxxxxx")  # Staging Chann
 MAIN_CHAT_ID = os.getenv("MAIN_CHAT_ID", "-100xxxxxxxxx")        # Target Public Channel ID
 
 # IMPORTANT: Update with your actual channel username/handle
-CHANNEL_HANDLE = "@your_actual_channel_username" 
+CHANNEL_HANDLE = "@loot_hacked" 
 
 # Default fallback Price History site if no explicit link is provided in the message
 DEFAULT_PRICE_HISTORY_LINK = "https://pricehistoryapp.com/"
@@ -27,7 +27,7 @@ DEAL_HEADERS = [
 ]
 
 STATE_FILE = "state.json"
-DEBUG_PRINT_UPDATES = False
+DEBUG_PRINT_UPDATES = True
 
 
 # ================= STATE MANAGEMENT =================
