@@ -72,11 +72,11 @@ def extract_links_and_entities(msg):
 
 
 def get_canonical_flipkart_url(url):
-    """Converts raw expanded Flipkart links to a clean product URL for Price History."""
-    if not url or "flipkart.com" not in url.lower():
+    """Converts raw expanded store links to clean canonical URLs for Price History."""
+    if not url or not url.startswith("http"):
         return None
-    if "/s/" in url or "fkrt.cc" in url:
-        return None  # Still a short link
+    if any(short in url.lower() for short in ["/s/", "fkrt.cc", "bitli.in", "bit.ly"]):
+        return None
 
     itm_match = re.search(r'/(?:p|dp)/(itm[a-zA-Z0-9]+)', url)
     pid_match = re.search(r'(pid=[A-Za-z0-9]+)', url)
@@ -92,12 +92,11 @@ def get_canonical_flipkart_url(url):
 
 
 def build_price_history_link(canonical_url, title):
-    """Builds Price History link. Guaranteed never to produce a 404 page."""
+    """Builds Price History link. Never returns a 404 page."""
     if canonical_url and ("flipkart.com/p/" in canonical_url or "amazon.in/dp/" in canonical_url):
         encoded = urllib.parse.quote(canonical_url, safe='')
         return f"https://pricehistoryapp.com/search?q={encoded}"
     elif title and title != "SPECIAL OFFER DEAL":
-        # Search by product title if short link couldn't be unshortened over network
         encoded_title = urllib.parse.quote(title, safe='')
         return f"https://pricehistoryapp.com/search?q={encoded_title}"
     else:
@@ -106,82 +105,79 @@ def build_price_history_link(canonical_url, title):
 
 def get_product_emoji(text):
     t = text.lower()
-    if any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "soundbar", "zebronics", "boat", "sony", "jbl"]):
+    if any(k in t for k in ["beauty", "decor", "home", "cosmetic", "skin", "cream", "lotion", "makeup"]):
+        return "💄" if "beauty" in t or "cosmetic" in t else "🏠"
+    elif any(k in t for k in ["headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", "zebronics", "boat", "sony"]):
         return "🎧"
-    elif any(k in t for k in ["cashew", "kaju", "dry fruit", "almond", "protein", "fitness", "treadmill", "cycle", "supplement", "whey"]):
+    elif any(k in t for k in ["cashew", "kaju", "dry fruit", "almond", "protein", "fitness", "treadmill", "cycle"]):
         return "🥔" if "cashew" in t or "kaju" in t else "🏋️"
-    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "titan", "fastrack", "casio", "noise"]):
+    elif any(k in t for k in ["watch", "clock", "smartwatch", "analog", "titan", "fastrack", "casio"]):
         return "⌚"
-    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "poco", "vivo", "oppo"]):
+    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "poco"]):
         return "📱"
-    elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "crocs", "bata", "campus"]):
+    elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "crocs", "bata"]):
         return "👟"
-    elif any(k in t for k in ["laptop", "macbook", "computer", "pc", "monitor", "keyboard", "mouse", "asus", "hp", "dell"]):
+    elif any(k in t for k in ["laptop", "macbook", "computer", "pc", "monitor", "keyboard"]):
         return "💻"
-    elif any(k in t for k in ["shirt", "tshirt", "t-shirt", "jeans", "trouser", "dress", "cloth", "apparel", "kurta", "saree"]):
+    elif any(k in t for k in ["shirt", "tshirt", "jeans", "trouser", "dress", "cloth"]):
         return "👕"
     else:
         return "🛍️"
 
 
-def extract_title(raw_text, web_page, deal_link):
-    # 1. Title typed in Staging message
+def parse_message_components(raw_text, web_page, deal_link):
     lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
-    text_lines = []
+    title_lines = []
+    coupon_line = None
+
     for line in lines:
         if re.match(r'^https?://[^\s]+$', line):
             continue
+            
+        # Detect Promo / Coupon Code
+        if re.search(r'(?i)(use|apply)\s*code\s*:', line) or re.search(r'(?i)^code\s*:', line):
+            coupon_line = line.strip()
+            continue
+
         if any(hdr in line.lower() for hdr in ["earnkaro", "grab deals", "loot deals", "join for more"]):
             continue
+
         line_no_url = re.sub(r'https?://[^\s]+', '', line).strip()
         line_clean = re.sub(r'^(GRAB|LOOT|DEAL|OFFER|HOT|SPECIAL)\s*:\s*', '', line_no_url, flags=re.IGNORECASE).strip()
         line_clean = re.sub(r'^[^\w\s]+', '', line_clean).strip()
+        
         if line_clean and not any(ign in line_clean.lower() for ign in ["lighting deal", "lowest price"]):
-            text_lines.append(line_clean)
-            
-    if text_lines:
-        return " ".join(text_lines).upper(), get_product_emoji(raw_text + " " + " ".join(text_lines))
+            title_lines.append(line_clean)
 
-    # 2. Title from Telegram's cached web_page preview card
-    wp_title = web_page.get("title")
-    if wp_title:
-        clean_wp = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|At Best).*$', '', wp_title).strip()
-        if len(clean_wp) > 3:
-            return clean_wp.upper(), get_product_emoji(clean_wp)
+    if title_lines:
+        title = " ".join(title_lines).upper()
+    elif web_page.get("title"):
+        clean_wp = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|At Best).*$', '', web_page.get("title")).strip()
+        title = clean_wp.upper() if len(clean_wp) > 3 else "SPECIAL OFFER DEAL"
+    else:
+        title = "SPECIAL OFFER DEAL"
 
-    # 3. Title from URL slug if available
-    expanded_url = web_page.get("url") or deal_link
-    slug_match = re.search(r'flipkart\.com/([^/]+)/(?:p|dp)/', expanded_url, re.IGNORECASE)
-    if slug_match:
-        slug = slug_match.group(1).replace('-', ' ').strip()
-        if len(slug) > 3:
-            return slug.upper(), get_product_emoji(slug)
-
-    return "SPECIAL OFFER DEAL", "🛍️"
+    emoji = get_product_emoji(raw_text + " " + title)
+    return title, coupon_line, emoji
 
 
-def format_caption(title, emoji, deal_link):
+def format_caption(title, coupon_line, emoji, deal_link):
     header = random.choice(DEAL_HEADERS)
     
     caption_lines = [
         f"<b>{header}</b>\n",
-        f"👀 {emoji} <b>{title}</b>\n",
+        f"👀 {emoji} <b>{title}</b>\n"
+    ]
+
+    if coupon_line:
+        caption_lines.append(f"🏷️ <b>{coupon_line.upper()}</b>\n")
+
+    caption_lines.extend([
         f"🛒 <b>BUY NOW:</b> {deal_link}\n",
         f"📢 <b>JOIN FOR MORE DEALS:</b> {CHANNEL_HANDLE}"
-    ]
+    ])
     
-    full_caption = "\n".join(caption_lines)
-    
-    if len(full_caption) > 1000:
-        short_title = title[:120] + "..." if len(title) > 120 else title
-        return (
-            f"<b>{header}</b>\n\n"
-            f"👀 {emoji} <b>{short_title}</b>\n\n"
-            f"🛒 <b>BUY NOW:</b> {deal_link}\n\n"
-            f"📢 <b>JOIN:</b> {CHANNEL_HANDLE}"
-        )
-        
-    return full_caption
+    return "\n".join(caption_lines)
 
 
 def create_price_history_button(price_history_link):
@@ -269,38 +265,38 @@ def process_message(msg):
         if any(domain in url.lower() for domain in ["pricehistory", "pricetracker"]):
             explicit_price_history_link = url
         elif not deal_link:
-            deal_link = url  # Keeps original short affiliate link
+            deal_link = url # Keeps short link (bitli.in / fkrt.cc)
             
     if not deal_link:
         print("  [-] Skipped: No product link found in message.")
         return
 
-    # Extract expanded URL from Telegram's web_page object
+    # Extract expanded URL from Telegram web preview
     telegram_expanded_url = web_page.get("url")
     canonical_url = get_canonical_flipkart_url(telegram_expanded_url or deal_link)
 
-    # Title & Emoji
-    title, emoji = extract_title(raw_text, web_page, deal_link)
+    # Parse Title, Coupon Code, and Emoji
+    title, coupon_line, emoji = parse_message_components(raw_text, web_page, deal_link)
 
-    # Build Price History Link (Guaranteed no 404)
+    # Build Price History Link
     if explicit_price_history_link:
         price_history_link = explicit_price_history_link
     else:
         price_history_link = build_price_history_link(canonical_url, title)
 
-    # Format Caption with short deal_link
-    caption = format_caption(title, emoji, deal_link)
+    # Format Caption with Coupon & short deal link
+    caption = format_caption(title, coupon_line, emoji, deal_link)
     
     posted = False
     
-    # Priority 1: Image directly attached to Staging message
+    # Priority 1: Direct photo in Staging Channel
     photos = msg.get("photo")
     if photos:
         file_url = get_telegram_file_url(photos[-1]["file_id"])
         if file_url:
             posted = post_photo(file_url, caption, price_history_link)
 
-    # Priority 2: Photo from Telegram's cached web_page preview
+    # Priority 2: Photo from Telegram cached web_page preview
     if not posted and web_page.get("photo"):
         wp_photos = web_page.get("photo")
         if wp_photos:
@@ -369,4 +365,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
     
