@@ -1,9 +1,9 @@
-
 import os
 import json
 import re
 import random
 import requests
+import urllib.parse
 
 # ================= CONFIGURATION =================
 RELAY_BOT_TOKEN = os.getenv("RELAY_BOT_TOKEN", "YOUR_RELAY_BOT_TOKEN")
@@ -49,14 +49,13 @@ def save_state(state):
         print(f"Error saving state file: {e}")
 
 
-# ================= PARSING & FORMATTING =================
+# ================= LINK & SCRAPING UTILITIES =================
 def extract_links_and_entities(msg):
     text = msg.get("caption") or msg.get("text") or ""
     entities = msg.get("caption_entities") or msg.get("entities") or []
     
     extracted_urls = []
-    
-    urls_in_text = re.findall(r'https?://[^\s]+', text)
+    urls_in_text = re.findall(r'https?://[^\s>"]+', text)
     extracted_urls.extend(urls_in_text)
     
     for entity in entities:
@@ -65,18 +64,69 @@ def extract_links_and_entities(msg):
             
     unique_urls = []
     for url in extracted_urls:
-        if url not in unique_urls:
-            unique_urls.append(url)
+        clean_url = url.rstrip(".,;!)")
+        if clean_url not in unique_urls:
+            unique_urls.append(clean_url)
             
     return unique_urls
 
 
+def scrape_metadata_from_url(url):
+    """Expands short links (fkrt.cc, amzn.to) and extracts og:title & og:image."""
+    title = None
+    image_url = None
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, allow_redirects=True, timeout=10)
+        final_url = resp.url
+        html = resp.text
+        
+        # 1. Scrape og:title
+        title_match = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']', html, re.IGNORECASE)
+        if not title_match:
+            title_match = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:title["\']', html, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1).strip()
+            
+        # 2. Scrape og:image
+        img_match = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\'](.*?)["\']', html, re.IGNORECASE)
+        if not img_match:
+            img_match = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:image["\']', html, re.IGNORECASE)
+        if img_match:
+            image_url = img_match.group(1).strip()
+            
+        # Clean title suffix (e.g. "Buy Online at Flipkart.com" / "Amazon.in")
+        if title:
+            title = re.sub(r'(?i)(\||\-|\:)\s*(Flipkart|Amazon|Myntra|Ajio).*$', '', title).strip()
+            
+        # 3. Fallback: Parse title from URL Slug if metadata missing or generic
+        if not title or len(title) < 4 or title.lower() in ["flipkart", "amazon"]:
+            parsed = urllib.parse.urlparse(final_url)
+            path_parts = [p for p in parsed.path.split('/') if p]
+            
+            for i, part in enumerate(path_parts):
+                if part.lower() in ['p', 'dp', 'dl'] and i > 0:
+                    slug = path_parts[i-1]
+                    title = slug.replace('-', ' ').title()
+                    break
+            if not title and path_parts:
+                title = path_parts[0].replace('-', ' ').title()
+
+    except Exception as e:
+        print(f"  [!] Failed scraping metadata from URL: {e}")
+        
+    return title, image_url
+
+
 def get_product_emoji(text):
     t = text.lower()
-    
     if any(k in t for k in ["watch", "clock", "smartwatch", "analog", "digital", "chronograph", "titan", "fastrack", "casio", "noise", "boat", "fire-boltt", "timex", "fossil"]):
         return "⌚"
-    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "charger", "powerbank"]):
+    elif any(k in t for k in ["phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", "5g", "smartphone", "charger", "powerbank", "nova", "poco", "vivo", "oppo"]):
         return "📱"
     elif any(k in t for k in ["shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "heels", "crocs", "bata", "campus", "sparx"]):
         return "👟"
@@ -94,25 +144,21 @@ def get_product_emoji(text):
         return "🛍️"
 
 
-def extract_title_and_emoji(raw_text):
-    if not raw_text:
-        return "SPECIAL OFFER DEAL", "🛍️"
-        
+def extract_title_and_emoji(raw_text, scraped_title=None):
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     clean_lines = []
     
     for line in lines:
         line_without_urls = re.sub(r'https?://[^\s]+', '', line).strip()
         line_clean = re.sub(r"(TODAY'S DEAL|Verify|Join|Price trends|Flipkart|Amazon|Myntra|Ajio|LIGHTNING DEAL|LOWEST PRICE EVER)", '', line_without_urls, flags=re.IGNORECASE).strip()
-        
         if line_clean:
             clean_lines.append(line_clean)
             
     if clean_lines:
         raw_title = clean_lines[0]
         title = re.sub(r'^[^\w\s]+', '', raw_title).strip()
-        if not title:
-            title = "SPECIAL OFFER DEAL"
+    elif scraped_title:
+        title = scraped_title
     else:
         title = "SPECIAL OFFER DEAL"
 
@@ -174,7 +220,10 @@ def get_telegram_file_url(file_id):
 def post_photo(image_url, caption, price_history_link):
     url = f"https://api.telegram.org/bot{MAIN_BOT_TOKEN}/sendPhoto"
     try:
-        img_resp = requests.get(image_url, timeout=15)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        img_resp = requests.get(image_url, headers=headers, timeout=15)
         img_resp.raise_for_status()
         
         payload = {
@@ -234,18 +283,27 @@ def process_message(msg):
     if not price_history_link:
         price_history_link = DEFAULT_PRICE_HISTORY_LINK
 
-    title, emoji = extract_title_and_emoji(raw_text)
+    # Scrape web page if text or title is sparse
+    scraped_title, scraped_image_url = scrape_metadata_from_url(deal_link)
+
+    title, emoji = extract_title_and_emoji(raw_text, scraped_title)
     caption = format_caption(title, emoji, deal_link)
     
     posted = False
     photos = msg.get("photo")
     
+    # Priority 1: Telegram Photo attachment
     if photos:
         largest_photo = photos[-1]
         file_url = get_telegram_file_url(largest_photo["file_id"])
         if file_url:
             posted = post_photo(file_url, caption, price_history_link)
             
+    # Priority 2: Scraped product web photo
+    if not posted and scraped_image_url:
+        posted = post_photo(scraped_image_url, caption, price_history_link)
+
+    # Fallback: Text only
     if not posted:
         post_text(caption, price_history_link)
 
@@ -304,4 +362,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+            
