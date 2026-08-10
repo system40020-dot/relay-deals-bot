@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import random
 import requests
 
 # ================= CONFIGURATION =================
@@ -10,8 +11,20 @@ MAIN_BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN", "YOUR_MAIN_BOT_TOKEN")
 STAGING_CHAT_ID = os.getenv("STAGING_CHAT_ID", "-100xxxxxxxxx")  # Staging Channel ID
 MAIN_CHAT_ID = os.getenv("MAIN_CHAT_ID", "-100xxxxxxxxx")        # Target Public Channel ID
 
-# Replace with your target public channel handle/link
-CHANNEL_HANDLE = "@your_channel_username" 
+# IMPORTANT: Update with your actual channel username/handle
+CHANNEL_HANDLE = "@your_actual_channel_username" 
+
+# Default fallback Price History site if no explicit link is provided in the message
+DEFAULT_PRICE_HISTORY_LINK = "https://pricehistoryapp.com/"
+
+# Dynamic deal header choices
+DEAL_HEADERS = [
+    "⚡ LIGHTNING DEAL ⚡",
+    "📉 LOWEST PRICE EVER 📉",
+    "🔥 LOOT DEAL OF THE DAY 🔥",
+    "💥 SUPER SAVER DEAL 💥",
+    "🚨 HOT DEAL ALERT 🚨"
+]
 
 STATE_FILE = "state.json"
 DEBUG_PRINT_UPDATES = False
@@ -67,45 +80,143 @@ def extract_links_and_entities(msg):
     return unique_urls
 
 
-def extract_clean_title(text):
-    """Extracts a clean title line from message text."""
-    if not text:
-        return "Hot Deal"
-        
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-    for line in lines:
-        if not line.startswith("http") and "TODAY'S DEAL" not in line and "Verify" not in line:
-            return line
-            
-    return "Hot Deal"
-
-
-def format_caption(title, deal_link, price_history_link=None):
-    """Formats HTML caption without duplicate links or broken footer placeholders."""
-    caption_lines = [
-        "🔥💥 <b>TODAY'S DEAL</b> 💥🔥\n",
-        f"👀 <b>{title}</b>\n",
-        f"🛒 <b>Buy Now:</b> {deal_link}"
-    ]
+def get_product_emoji(text):
+    """Detects product category emoji across major Indian shopping platforms."""
+    t = text.lower()
     
-    if price_history_link:
-        caption_lines.append(f"📈 <b>Price Trends:</b> {price_history_link}")
+    # ⌚ Watches & Smartwatches
+    if any(k in t for k in [
+        "watch", "clock", "smartwatch", "analog", "digital", "chronograph", 
+        "titan", "fastrack", "casio", "noise", "boat", "fire-boltt", "timex", 
+        "fossil", "amazfit", "realme watch", "dizo", "crossbeats"
+    ]):
+        return "⌚"
         
-    caption_lines.append(f"\n📢 Join for more deals: {CHANNEL_HANDLE}")
+    # 📱 Mobiles, Tablets & Mobile Accessories
+    elif any(k in t for k in [
+        "phone", "mobile", "iphone", "samsung", "oneplus", "realme", "redmi", 
+        "5g", "smartphone", "charger", "powerbank", "adapter", "ipad", "tablet", 
+        "poco", "vivo", "oppo", "iqoo", "motorola", "back cover", "case"
+    ]):
+        return "📱"
+        
+    # 👟 Footwear & Shoes
+    elif any(k in t for k in [
+        "shoe", "sneaker", "footwear", "sandal", "boot", "slipper", "heels", 
+        "loafers", "crocs", "flats", "flip flop", "woodland", "bata", "campus", "sparx"
+    ]):
+        return "👟"
+        
+    # 💻 Laptops & Tech
+    elif any(k in t for k in [
+        "laptop", "macbook", "computer", "pc", "monitor", "keyboard", "mouse", 
+        "asus", "hp", "dell", "lenovo", "acer", "msi", "hard disk", "ssd"
+    ]):
+        return "💻"
+        
+    # 🎧 Audio & Headphones
+    elif any(k in t for k in [
+        "headphone", "earphone", "airpods", "tws", "earbuds", "audio", "speaker", 
+        "soundbar", "neckband", "bluetooth", "jbl", "sony", "sennheiser", "boult"
+    ]):
+        return "🎧"
+        
+    # 👕 Fashion & Apparel
+    elif any(k in t for k in [
+        "shirt", "tshirt", "t-shirt", "jeans", "trouser", "dress", "cloth", 
+        "apparel", "kurta", "saree", "top", "jacket", "hoodie", "blazer", 
+        "allen solly", "van heusen", "louis philippe", "puma", "adidas", "nike", "levis"
+    ]):
+        return "👕"
+        
+    # 💄 Beauty & Grooming
+    elif any(k in t for k in [
+        "trimmer", "shaver", "grooming", "makeup", "lipstick", "perfume", 
+        "serum", "shampoo", "lotion", "skincare", "philips", "beardo"
+    ]):
+        return "💄"
+        
+    # 🎒 Bags & Luggage
+    elif any(k in t for k in [
+        "bag", "backpack", "trolley", "suitcase", "luggage", "wallet", "handbag", 
+        "american tourister", "skybags", "safari"
+    ]):
+        return "🎒"
+        
+    else:
+        return "🛍️"
+
+
+def extract_title_and_emoji(raw_text):
+    """Cleans up text, extracts a valid title, and assigns a matching emoji."""
+    if not raw_text:
+        return "SPECIAL OFFER DEAL", "🛍️"
+        
+    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+    clean_lines = []
+    
+    for line in lines:
+        # Strip out HTTP/HTTPS URLs
+        line_without_urls = re.sub(r'https?://[^\s]+', '', line).strip()
+        # Filter out common header or promo phrases
+        line_clean = re.sub(r"(TODAY'S DEAL|Verify|Join|Price trends|Flipkart|Amazon|Myntra|Ajio|LIGHTNING DEAL|LOWEST PRICE EVER)", '', line_without_urls, flags=re.IGNORECASE).strip()
+        
+        if line_clean:
+            clean_lines.append(line_clean)
+            
+    if clean_lines:
+        raw_title = clean_lines[0]
+        # Strip extraneous leading icons/emojis from title text
+        title = re.sub(r'^[^\w\s]+', '', raw_title).strip()
+        if not title:
+            title = "SPECIAL OFFER DEAL"
+    else:
+        title = "SPECIAL OFFER DEAL"
+
+    emoji = get_product_emoji(raw_text + " " + title)
+    
+    # Capitalize title for bold presentation
+    return title.upper(), emoji
+
+
+def format_caption(title, emoji, deal_link):
+    """Formats HTML caption with randomized bold catchy headers and bold title."""
+    header = random.choice(DEAL_HEADERS)
+    
+    caption_lines = [
+        f"<b>{header}</b>\n",
+        f"👀 {emoji} <b>{title}</b>\n",
+        f"🛒 <b>BUY NOW:</b> {deal_link}\n",
+        f"📢 <b>JOIN FOR MORE DEALS:</b> {CHANNEL_HANDLE}"
+    ]
     
     full_caption = "\n".join(caption_lines)
     
     # Fallback if over Telegram 1024-character caption limit
     if len(full_caption) > 1000:
-        short_title = title[:150] + "..." if len(title) > 150 else title
+        short_title = title[:120] + "..." if len(title) > 120 else title
         return (
-            f"🔥💥 <b>TODAY'S DEAL</b> 💥🔥\n\n"
-            f"👀 <b>{short_title}</b>\n\n"
-            f"🛒 <b>Buy Now:</b> {deal_link}\n\n"
-            f"📢 Join: {CHANNEL_HANDLE}"
+            f"<b>{header}</b>\n\n"
+            f"👀 {emoji} <b>{short_title}</b>\n\n"
+            f"🛒 <b>BUY NOW:</b> {deal_link}\n\n"
+            f"📢 <b>JOIN:</b> {CHANNEL_HANDLE}"
         )
         
     return full_caption
+
+
+def create_price_history_button(price_history_link):
+    """Generates Telegram Inline Keyboard Button for Price History."""
+    return json.dumps({
+        "inline_keyboard": [
+            [
+                {
+                    "text": "📉 Price History 📉",
+                    "url": price_history_link
+                }
+            ]
+        ]
+    })
 
 
 # ================= TELEGRAM API ACTIONS =================
@@ -123,8 +234,8 @@ def get_telegram_file_url(file_id):
     return None
 
 
-def post_photo(image_url, caption):
-    """Downloads image bytes locally first to bypass HTTP 400 cross-bot errors."""
+def post_photo(image_url, caption, price_history_link):
+    """Downloads image bytes locally and attaches Price History button."""
     url = f"https://api.telegram.org/bot{MAIN_BOT_TOKEN}/sendPhoto"
     try:
         img_resp = requests.get(image_url, timeout=15)
@@ -133,27 +244,29 @@ def post_photo(image_url, caption):
         payload = {
             "chat_id": MAIN_CHAT_ID,
             "caption": caption,
-            "parse_mode": "HTML"
+            "parse_mode": "HTML",
+            "reply_markup": create_price_history_button(price_history_link)
         }
         files = {"photo": ("image.jpg", img_resp.content)}
         
         resp = requests.post(url, data=payload, files=files, timeout=20)
         resp.raise_for_status()
-        print("  [✓] Posted photo deal successfully.")
+        print("  [✓] Posted photo deal with Price History button successfully.")
         return True
     except Exception as e:
         print(f"  [!] Photo post failed ({e}); falling back to text-only.")
         return False
 
 
-def post_text(caption):
-    """Posts text-only message to Main Channel."""
+def post_text(caption, price_history_link):
+    """Posts text-only message with disabled link preview and Price History button."""
     url = f"https://api.telegram.org/bot{MAIN_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": MAIN_CHAT_ID,
         "text": caption,
         "parse_mode": "HTML",
-        "disable_web_page_preview": False
+        "disable_web_page_preview": True,  # Disables ugly blurred link preview boxes
+        "reply_markup": create_price_history_button(price_history_link)
     }
     try:
         resp = requests.post(url, json=payload, timeout=15)
@@ -175,7 +288,7 @@ def process_message(msg):
     price_history_link = None
     
     for url in urls:
-        if "pricehistory" in url.lower():
+        if any(domain in url.lower() for domain in ["pricehistory", "pricetracker"]):
             price_history_link = url
         elif not deal_link:
             deal_link = url
@@ -184,8 +297,12 @@ def process_message(msg):
         print("  [-] Skipped: No product link found in message.")
         return
 
-    title = extract_clean_title(raw_text)
-    caption = format_caption(title, deal_link, price_history_link)
+    # Fallback Price History URL if not provided
+    if not price_history_link:
+        price_history_link = DEFAULT_PRICE_HISTORY_LINK
+
+    title, emoji = extract_title_and_emoji(raw_text)
+    caption = format_caption(title, emoji, deal_link)
     
     posted = False
     photos = msg.get("photo")
@@ -194,10 +311,10 @@ def process_message(msg):
         largest_photo = photos[-1]
         file_url = get_telegram_file_url(largest_photo["file_id"])
         if file_url:
-            posted = post_photo(file_url, caption)
+            posted = post_photo(file_url, caption, price_history_link)
             
     if not posted:
-        post_text(caption)
+        post_text(caption, price_history_link)
 
 
 def main():
@@ -245,7 +362,6 @@ def main():
     except Exception as e:
         print(f"Error during execution: {e}")
         
-    # Maintain strict chronological sequence when preserving state
     state["processed_ids"] = processed_ids[-200:]
     state["last_update_id"] = last_offset
     save_state(state)
@@ -254,4 +370,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-   
+    
