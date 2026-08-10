@@ -372,8 +372,6 @@ def format_caption(deal, settings, state, for_photo=True):
             pass
 
     price_rating_block = "\n".join(l for l in [price_line, rating_line] if l)
-
-    link_line = f"🔍 {deal['link']}"
     history_line = price_history_line(state, deal["link"], deal["price"])
     ph_line = "📈 Verify Flipkart/Amazon price trends: https://pricehistoryapp.com/" if settings.get("show_pricehistoryapp_link", True) else ""
     footer = html.escape(settings.get("footer_text", ""))
