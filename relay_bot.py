@@ -91,70 +91,58 @@ def unshorten_link(short_url):
     except Exception:
         return short_url
 
-import requests
-from bs4 import BeautifulSoup
+import asyncio
+from playwright.async_api import async_playwright
 import re
 import html
 
-def fetch_product_metadata(url):
-    """Robust fetcher using mobile emulation and clean headers to prevent blocking."""
-    try:
-        # Using a heavily rotated mobile browser fingerprint
-        headers = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-IN,en-GB;q=0.9,en;q=0.8",
-            "Connection": "keep-alive"
-        }
+async def fetch_product_metadata(url):
+    """Playwright-based robust fetcher to bypass basic bot detections using a headless browser."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True, 
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
         
-        # Expand short links first
-        session = requests.Session()
-        res = session.get(url, headers=headers, timeout=12, allow_redirects=True)
-        final_url = res.url
-        
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        title, image_url, price = None, None, None
-        
-        # 1. OpenGraph Meta Tags (Sabse reliable source)
-        if soup.find('meta', property='og:title'):
-            title = soup.find('meta', property='og:title').get('content')
-        if soup.find('meta', property='og:image'):
-            image_url = soup.find('meta', property='og:image').get('content')
+        try:
+            await page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            final_url = page.url
             
-        # 2. Fallback to standard tags if OG fails
-        if not title and soup.title:
-            title = soup.title.string
+            # Extract metadata using JavaScript evaluation
+            title = await page.evaluate("() => document.querySelector('meta[property=\"og:title\"]')?.content || document.title")
+            image_url = await page.evaluate("() => document.querySelector('meta[property=\"og:image\"]')?.content || ''")
             
-        if not title or "Access Denied" in title or "Robot" in title:
-            # Fallback title so it never posts raw error
-            title = "🔥 Loot Deal - Check Price"
-        else:
-            title = html.unescape(title.strip())
+            page_text = await page.evaluate("() => document.body.innerText")
+            price_match = re.search(r'(?:₹|Rs\.?)\s*([\d,]+\.?\d*)', page_text)
+            price = price_match.group(0) if price_match else None
             
-        # 3. Smart Price Extraction via Regex across the whole page text
-        price_match = re.search(r'(?:₹|Rs\.?)\s*([\d,]+\.?\d*)', res.text)
-        if price_match:
-            try:
-                price = price_match.group(0)
-            except:
-                pass
+            if not title or "Access Denied" in title or "Robot" in title:
+                title = "SPECIAL HANDPICKED LOOT"
+            else:
+                title = html.unescape(title.strip())
 
-        return {
-            "title": title,
-            "image_url": image_url,
-            "price": price,
-            "link": final_url
-        }
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        return {
-            "title": "🔥 Loot Deal - Check Price",
-            "image_url": None,
-            "price": None,
-            "link": url
-        }
+            await browser.close()
+            return {
+                "title": title,
+                "image_url": image_url if image_url else None,
+                "price": price,
+                "link": final_url
+            }
+            
+        except Exception as e:
+            print(f"Playwright Error: {e}")
+            await browser.close()
+            return {
+                "title": "SPECIAL HANDPICKED LOOT",
+                "image_url": None,
+                "price": None,
+                "link": url
+            }
+            
 
 def get_canonical_url(expanded_url):
     if not expanded_url: return None
