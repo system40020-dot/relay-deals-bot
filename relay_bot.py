@@ -92,19 +92,23 @@ def unshorten_link(short_url):
         return short_url
 
 def fetch_product_metadata_with_playwright(url):
-    """Uses Playwright real headless browser to bypass anti-bot and extract dynamic content."""
+    """Uses Playwright real headless browser with advanced timeout and fallback extraction."""
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+            browser = p.chromium.launch(
+                headless=True, 
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            )
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800}
+                viewport={"width": 1280, "height": 800},
+                device_scale_factor=1,
             )
             page = context.new_page()
             
-            # Navigate to the target page and wait for network settlement
-            page.goto(url, timeout=30000, wait_until="domcontentloaded")
-            time.sleep(3) # Extra buffer for JS execution
+            # Navigate with extended timeout
+            page.goto(url, timeout=40000, wait_until="networkidle")
+            time.sleep(2) # Extra buffer for dynamic tags
             
             final_url = page.url
             html_content = page.content()
@@ -121,7 +125,15 @@ def fetch_product_metadata_with_playwright(url):
                 if tag_title:
                     title = html.unescape(tag_title.group(1)).strip()
 
-            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA"]:
+            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
+                # Try heading tag fallback
+                h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
+                if h1_match:
+                    clean_h1 = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip()
+                    if clean_h1:
+                        title = html.unescape(clean_h1)
+
+            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
                 title = "SPECIAL OFFER DEAL"
 
             # 2. Extract Image
@@ -143,8 +155,9 @@ def fetch_product_metadata_with_playwright(url):
 
             return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": final_url}
     except Exception as e:
-        print(f"Playwright error: {e}")
+        print(f"Playwright detailed error: {e}")
         return None
+        
 
 def get_canonical_url(expanded_url):
     if not expanded_url: return None
