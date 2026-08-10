@@ -458,13 +458,6 @@ def main():
 
     print(f"Found {len(posts)} new post(s) in staging channel.")
 
-    # IMPORTANT: mark the offset as consumed right away, and save immediately.
-    # This is the fix for "old deals repost on re-run" -- previously the
-    # offset only saved at the very end, so any crash mid-batch meant the
-    # next run re-fetched and re-relayed everything from scratch.
-    # processed_ids is a SECOND, independent safety net on top of this: even
-    # if the offset mechanism somehow re-delivers a message, its message_id
-    # will already be marked processed, so it won't be relayed twice.
     state["last_update_id"] = new_max_update_id
     save_json(STATE_FILE, state)
 
@@ -501,22 +494,19 @@ def main():
                 if msg_id:
                     processed_ids.add(msg_id)
 
-            # save after EVERY post (success, skip, or failure) so progress
-            # is never lost even if a later post in this same batch crashes
-            state["processed_ids"] = list(processed_ids)[-200:]  # cap growth
+            state["processed_ids"] = list(processed_ids)[-200:]
             save_json(STATE_FILE, state)
+
         except Exception as e:
-            # one bad post should never take down the whole run or cause
-            # already-relayed posts to be silently lost/reprocessed
             print(f"  [error] Failed to process a post, skipping it: {e}")
             if msg_id:
                 processed_ids.add(msg_id)
                 state["processed_ids"] = list(processed_ids)[-200:]
                 save_json(STATE_FILE, state)
             continue
-       
- print("Done.") 
+
+    print("Done.")
+
 
 if __name__ == "__main__":
     main()
-   
