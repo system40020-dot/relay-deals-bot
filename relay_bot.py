@@ -113,8 +113,8 @@ def fetch_product_metadata_with_playwright(url):
             final_url = page.url
             html_content = page.content()
             print(f"DEBUG: Final URL = {final_url}")
-print(f"DEBUG: HTML length = {len(html_content)}")
-print(f"DEBUG: HTML snippet = {html_content[:500]}")
+            print(f"DEBUG: HTML length = {len(html_content)}")
+            print(f"DEBUG: HTML snippet = {html_content[:500]}")
             browser.close()
 
             title, image_url, price, discount_text = None, None, None, None
@@ -160,6 +160,7 @@ print(f"DEBUG: HTML snippet = {html_content[:500]}")
     except Exception as e:
         print(f"Playwright detailed error: {e}")
         return None
+
      
             
 
