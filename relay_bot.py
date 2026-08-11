@@ -30,14 +30,7 @@ CHANNEL_HANDLE = "@loot_hacked"
 DEFAULT_PRICE_HISTORY_LINK = "https://pricehistoryapp.com/"
 
 DEAL_HEADERS = [
-    "🔥 MEGA LOOT DEAL ALERT! 🔥",
-    "⚡ LIGHTNING FAST OFFER ⚡",
-    "💥 CRAZY PRICE DROP 💥",
-    "🌟 SPECIAL HANDPICKED LOOT 🌟",
-    "🚀 HURRY! MASSIVE DISCOUNT 🚀",
-    "💎 BEST VALUE DEAL FOUND 💎",
-    "📉 LOWEST PRICE EVER 📉",
-    "🚨 HOT DEAL ALERT 🚨"
+    "🆕 TEST MARKER 999 🆕"
 ]
 
 STATE_FILE = "state.json"
