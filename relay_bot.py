@@ -301,6 +301,24 @@ def get_emoji(text):
     if any(k in t for k in ["headphone", "audio", "boat", "earbud"]): return "🎧"
     return "🛍️"
 
+def extract_fallback_title_from_text(text):
+    """Extracts a usable title from the original staging message when scraping fails."""
+    if not text:
+        return None
+    text = re.sub(r'https?://\S+', '', text)
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    noise_patterns = ["buy now", "join for", "join our", "@loot", "price:", "discount"]
+    good_lines = [l for l in lines if not any(p in l.lower() for p in noise_patterns)]
+    candidate = good_lines[0] if good_lines else (lines[0] if lines else None)
+    if candidate:
+        candidate = re.sub(r'[^\w\s₹%.,&\-]', '', candidate).strip()
+        if len(candidate) > 100:
+            candidate = candidate[:100].strip()
+        if len(candidate) < 5:
+            return None
+        return candidate
+    return None
+
 def format_caption(title, emoji, link, scraped):
     header = random.choice(DEAL_HEADERS)
     lines = [f"<b>{header}</b>\n", f"👀 {emoji} <b>{html.escape(title)}</b>\n"]
