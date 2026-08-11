@@ -30,7 +30,26 @@ CHANNEL_HANDLE = "@loot_hacked"
 DEFAULT_PRICE_HISTORY_LINK = "https://pricehistoryapp.com/"
 
 DEAL_HEADERS = [
-    "🆕 TEST MARKER 999 🆕"
+    "🔥 MEGA LOOT DEAL ALERT! 🔥",
+    "⚡ LIGHTNING FAST OFFER ⚡",
+    "💥 CRAZY PRICE DROP 💥",
+    "🌟 SPECIAL HANDPICKED LOOT 🌟",
+    "🚀 HURRY! MASSIVE DISCOUNT 🚀",
+    "💎 BEST VALUE DEAL FOUND 💎",
+    "📉 LOWEST PRICE EVER 📉",
+    "🚨 HOT DEAL ALERT 🚨",
+    "🎯 TODAY'S TOP LOOT 🎯",
+    "🛍️ SHOPPING SPREE DEAL 🛍️",
+    "🔊 DEAL OF THE DAY 🔊",
+    "🏷️ UNBEATABLE PRICE TAG 🏷️",
+    "⏰ LIMITED TIME LOOT ⏰",
+    "💰 SAVE BIG TODAY 💰",
+    "🎉 EXCLUSIVE DEAL FOR YOU 🎉",
+    "🔻 PRICE SLASHED 🔻",
+    "✨ FRESH LOOT ALERT ✨",
+    "🏃‍♂️ GRAB IT BEFORE IT'S GONE 🏃‍♂️",
+    "📢 BIG SAVINGS INSIDE 📢",
+    "🎁 STEAL DEAL ALERT 🎁"
 ]
 
 STATE_FILE = "state.json"
@@ -85,7 +104,7 @@ def unshorten_link(short_url):
         return short_url
 
 def fetch_product_metadata_with_playwright(url):
-    """Uses Playwright real headless browser with advanced timeout and fallback extraction."""
+    """Uses Playwright real headless browser with advanced timeout, JSON-LD extraction, and generic fallback."""
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -96,56 +115,150 @@ def fetch_product_metadata_with_playwright(url):
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 800},
                 device_scale_factor=1,
+                locale="en-IN",
+                extra_http_headers={
+                    "Accept-Language": "en-IN,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                }
             )
+            context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-IN', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                window.chrome = { runtime: {} };
+            """)
             page = context.new_page()
             
-            # Navigate with extended timeout
             page.goto(url, timeout=40000, wait_until="networkidle")
-            time.sleep(2) # Extra buffer for dynamic tags
+            time.sleep(2)
             
             final_url = page.url
             html_content = page.content()
             print(f"DEBUG: Final URL = {final_url}")
             print(f"DEBUG: HTML length = {len(html_content)}")
-            print(f"DEBUG: HTML snippet = {html_content[:500]}")
             browser.close()
 
             title, image_url, price, discount_text = None, None, None, None
 
-            # 1. Extract Title
-            og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-            if og_title:
-                title = html.unescape(og_title.group(1)).strip()
-            else:
-                tag_title = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
-                if tag_title:
-                    title = html.unescape(tag_title.group(1)).strip()
+            # ===== STEP 1: Try JSON-LD structured data (works across most modern e-commerce sites) =====
+            ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_content, re.IGNORECASE | re.DOTALL)
+            for block in ld_blocks:
+                try:
+                    data = json.loads(block.strip())
+                    candidates = data if isinstance(data, list) else [data]
+                    for item in candidates:
+                        if not isinstance(item, dict):
+                            continue
+                        if "@graph" in item and isinstance(item["@graph"], list):
+                            candidates.extend([g for g in item["@graph"] if isinstance(g, dict)])
+                        item_type = item.get("@type", "")
+                        if isinstance(item_type, list):
+                            is_product = "Product" in item_type
+                        else:
+                            is_product = item_type == "Product"
+                        if is_product:
+                            if not title and item.get("name"):
+                                title = html.unescape(str(item["name"])).strip()
+                            if not image_url and item.get("image"):
+                                img = item["image"]
+                                if isinstance(img, list):
+                                    image_url = img[0] if img else None
+                                elif isinstance(img, dict):
+                                    image_url = img.get("url")
+                                else:
+                                    image_url = img
+                            offers = item.get("offers")
+                            if offers:
+                                if isinstance(offers, list):
+                                    offers = offers[0] if offers else {}
+                                if isinstance(offers, dict) and offers.get("price"):
+                                    try:
+                                        price = float(str(offers["price"]).replace(",", ""))
+                                    except:
+                                        pass
+                except Exception:
+                    continue
+                if title and price:
+                    break
 
-            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
-                # Try heading tag fallback
+            # ===== STEP 2: og:title / og:image fallback =====
+            if not title:
+                og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if og_title:
+                    title = html.unescape(og_title.group(1)).strip()
+
+            if not image_url:
+                og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if og_image:
+                    img_candidate = og_image.group(1).strip()
+                    if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite"]):
+                        image_url = img_candidate
+
+            # ===== STEP 3: Generic bad-title detection (pattern-based, not hardcoded per platform) =====
+            BAD_TITLE_PATTERNS = [
+                "access denied", "site maintenance", "under maintenance", "robot check",
+                "are you a human", "verify you are human", "captcha", "forbidden",
+                "error 403", "error 404", "page not found", "just a moment",
+                "attention required", "service unavailable", "bot detection",
+                "online shopping", "online store", "e-commerce", "welcome to"
+            ]
+            def is_bad_title(t):
+                if not t or len(t.strip()) < 5:
+                    return True
+                tl = t.lower()
+                if any(pat in tl for pat in BAD_TITLE_PATTERNS):
+                    return True
+                # Titles that are JUST a brand/domain name (very short, no product details)
+                if len(tl.split()) <= 2 and len(tl) < 20:
+                    return True
+                return False
+
+            if is_bad_title(title):
                 h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
                 if h1_match:
                     clean_h1 = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip()
-                    if clean_h1:
+                    if clean_h1 and not is_bad_title(clean_h1):
                         title = html.unescape(clean_h1)
 
-            if not title or title.upper() in ["AMAZON", "MYNTRA", "FLIPKART", "ONLINE SHOPPING INDIA", "BOAT LIFESTYLE"]:
+            if is_bad_title(title):
+                tag_title = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
+                if tag_title:
+                    tt = html.unescape(tag_title.group(1)).strip()
+                    if not is_bad_title(tt):
+                        title = tt
+
+            if is_bad_title(title):
                 title = "SPECIAL OFFER DEAL"
 
-            # 2. Extract Image
-            og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-            if og_image:
-                img_candidate = og_image.group(1).strip()
-                if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite"]):
-                    image_url = img_candidate
+            # ===== STEP 4: Generic image fallback chain =====
+            if not image_url:
+                landing_img = re.search(r'id=["\']landingImage["\'][^>]*src=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if landing_img:
+                    image_url = landing_img.group(1).strip()
 
-            # 3. Extract Price
-            price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
-            if price_match:
-                try: price = float(price_match.group(1).replace(",", ""))
-                except: pass
+            if not image_url:
+                item_img = re.search(r'itemprop=["\']image["\'][^>]*(?:content|src)=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if item_img:
+                    image_url = item_img.group(1).strip()
 
-            # 4. Extract Discount
+            if not image_url:
+                twitter_img = re.search(r'<meta[^>]*name=["\']twitter:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if twitter_img:
+                    img_candidate = twitter_img.group(1).strip()
+                    if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder"]):
+                        image_url = img_candidate
+
+            # ===== STEP 5: Price fallback (regex) if JSON-LD didn't give one =====
+            if not price:
+                price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
+                if price_match:
+                    try: price = float(price_match.group(1).replace(",", ""))
+                    except: pass
+
+            # ===== STEP 6: Discount =====
             disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
             if disc_match: discount_text = disc_match.group(1)
 
