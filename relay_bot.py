@@ -203,7 +203,12 @@ def fetch_product_metadata_with_playwright(url):
                 "are you a human", "verify you are human", "captcha", "forbidden",
                 "error 403", "error 404", "page not found", "just a moment",
                 "attention required", "service unavailable", "bot detection",
-                "online shopping", "online store", "e-commerce", "welcome to"
+                "online shopping", "online store", "e-commerce", "welcome to",
+                "oops", "something went wrong", "unexpected error", "please try again",
+                "temporarily unavailable", "we're sorry", "we are sorry", "session expired",
+                "invalid request", "suspicious activity", "blocked", "not found",
+                "try again later", "went wrong", "server error", "internal error",
+                "cannot process", "unavailable", "denied", "unauthorized"
             ]
             def is_bad_title(t):
                 if not t or len(t.strip()) < 5:
