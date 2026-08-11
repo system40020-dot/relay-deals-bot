@@ -350,23 +350,24 @@ def post_deal(image_url, caption, ph_link):
 def process_message(msg):
     urls = extract_all_links(msg)
     if not urls: return
-    
+
+    original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
     expanded = unshorten_link(aff_link)
-    
-    # Fetch real data using Playwright headless browser
+
     scraped = fetch_product_metadata_with_playwright(expanded)
     canonical = get_canonical_url(expanded)
 
-    title = scraped.get("title") if scraped and scraped.get("title") else "SPECIAL OFFER DEAL"
-    title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|Myntra|Boat).*$', '', title).strip().upper()
+    title = scraped.get("title") if scraped and scraped.get("title") else None
+    if not title or title == "SPECIAL OFFER DEAL":
+        fallback_title = extract_fallback_title_from_text(original_text)
+        title = fallback_title if fallback_title else "SPECIAL OFFER DEAL"
 
+    title = re.sub(r'(?i)(\||\-|\:)\s*(Buy|Online|Flipkart|Amazon|Myntra|Boat).*$', '', title).strip().upper()
     emoji = get_emoji(title)
     ph_link = build_price_history_link(canonical, title)
     caption = format_caption(title, emoji, aff_link, scraped)
-
     image_url = scraped.get("image_url") if scraped else None
-
     post_deal(image_url, caption, ph_link)
 
 def background_bot_loop():
