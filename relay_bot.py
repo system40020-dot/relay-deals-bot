@@ -356,10 +356,9 @@ def get_canonical_url(expanded_url):
     return expanded_url
 
 def build_price_history_link(canonical_url, title):
-    if canonical_url and ("flipkart.com/p/" in canonical_url or "amazon.in/dp/" in canonical_url):
-        return f"https://pricehistoryapp.com/search?q={urllib.parse.quote(canonical_url, safe='')}"
-    elif title and title != "SPECIAL OFFER DEAL":
-        return f"https://pricehistoryapp.com/search?q={urllib.parse.quote(title, safe='')}"
+    if canonical_url and "amazon.in/dp/" in canonical_url:
+        asin = canonical_url.rstrip("/").split("/")[-1]
+        return f"https://keepa.com/#!product/10-{asin}"
     return DEFAULT_PRICE_HISTORY_LINK
 
 # ================= FORMATTING =================
@@ -388,21 +387,39 @@ def extract_fallback_title_from_text(text):
             return None
         return candidate
     return None
-
-def format_caption(title, emoji, link, scraped):
+def parse_category_deal(text):
+    """Detects category/collection-style messages (e.g. 'LOOT: Shakers Starting @ ₹99')
+    and extracts (subject, price_phrase). Returns None for normal single-product messages."""
+    if not text:
+        return None
+    clean = re.sub(r'https?://\S+', '', text).strip()
+    clean = re.sub(r'^(loot|grab|deal|offer)\s*:\s*', '', clean, flags=re.IGNORECASE).strip()
+    m = re.search(
+        r'^(.*?)(?:\s*\|\s*|\s+)(starting\s*@?\s*₹\s?[\d,]+(?:\.\d+)?|up\s*to\s*\d+\s*%\s*off|flat\s*\d+\s*%\s*off)',
+        clean, re.IGNORECASE
+    )
+    if not m:
+        return None
+    subject = m.group(1).strip(" |-").strip()
+    phrase = m.group(2).strip()
+    phrase = phrase[0].upper() + phrase[1:]
+    if len(subject) < 3:
+        return None
+    return subject, phrase
+def format_caption(title, emoji, link, scraped, show_price_line=True):
     header = random.choice(DEAL_HEADERS)
     lines = [f"<b>{header}</b>\n", f"👀 {emoji} <b>{html.escape(title)}</b>\n"]
 
-    if scraped and scraped.get("price"):
-        p_str = f"₹{scraped['price']:,.0f}"
-        d_str = f" ({scraped['discount']})" if scraped.get("discount") else ""
-        lines.append(f"💰 Price: <b>{p_str}</b>{d_str}\n")
-    else:
-        lines.append("💰 Price: <b>Check Live Platform Price</b>\n")
+    if show_price_line:
+        if scraped and scraped.get("price"):
+            p_str = f"₹{scraped['price']:,.0f}"
+            d_str = f" ({scraped['discount']})" if scraped.get("discount") else ""
+            lines.append(f"💰 Price: <b>{p_str}</b>{d_str}\n")
+        else:
+            lines.append("💰 Price: <b>Check Live Platform Price</b>\n")
 
     lines.extend([f"🛒 <b>BUY NOW:</b> {link}\n", f"📢 <b>JOIN FOR MORE DEALS:</b> {CHANNEL_HANDLE}"])
     return "\n".join(lines)
-
 def post_deal(image_url, caption, ph_link):
     keyboard = json.dumps({"inline_keyboard": [[{"text": "📉 Price History 📉", "url": ph_link}]]})
     if image_url:
@@ -427,6 +444,30 @@ def process_message(msg):
 
     scraped = fetch_product_metadata_with_playwright(expanded)
     canonical = get_canonical_url(expanded)
+
+    category_deal = parse_category_deal(original_text)
+
+    if category_deal:
+        subject, price_phrase = category_deal
+        scraped_title = scraped.get("title") if scraped else None
+
+        combined_text = f"{subject} {scraped_title or ''} {original_text}"
+        cat_match = match_category(combined_text)
+        category_label = cat_match[1] if cat_match else None
+
+        title_lines = []
+        if category_label:
+            title_lines.append(f"Category: {category_label}")
+        title_lines.append(subject.upper())
+        title_lines.append(price_phrase)
+        title = "\n".join(title_lines)
+
+        emoji = get_emoji(subject)
+        ph_link = build_price_history_link(canonical, subject)
+        caption = format_caption(title, emoji, aff_link, None, show_price_line=False)
+        image_url = scraped.get("image_url") if scraped else None
+        post_deal(image_url, caption, ph_link)
+        return
 
     title = scraped.get("title") if scraped and scraped.get("title") else None
     if not title or title == "SPECIAL OFFER DEAL":
