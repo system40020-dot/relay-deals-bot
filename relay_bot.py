@@ -395,12 +395,13 @@ def parse_category_deal(text):
     clean = re.sub(r'https?://\S+', '', text).strip()
     clean = re.sub(r'^(loot|grab|deal|offer)\s*:\s*', '', clean, flags=re.IGNORECASE).strip()
     m = re.search(
-        r'^(.*?)(?:\s*\|\s*|\s+)(starting\s*@?\s*₹\s?[\d,]+(?:\.\d+)?|up\s*to\s*\d+\s*%\s*off|flat\s*\d+\s*%\s*off)',
+        r'^(.*?)(?:\s*[\|:]\s*|\s+)(starting\s*@?\s*₹\s?[\d,]+(?:\.\d+)?|up\s*to\s*\d+\s*%\s*off|flat\s*\d+\s*%\s*off)',
         clean, re.IGNORECASE
+    )
     )
     if not m:
         return None
-    subject = m.group(1).strip(" |-").strip()
+    subject = m.group(1).strip(" |-:").strip()
     phrase = m.group(2).strip()
     phrase = phrase[0].upper() + phrase[1:]
     if len(subject) < 3:
