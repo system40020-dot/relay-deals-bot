@@ -451,6 +451,15 @@ def fetch_product_metadata_with_playwright(url):
                 r'save\s*(\d+)\s*%',
                 r'-\s?(\d{1,2})\s*%',
             ]
+            
+            # ===== STEP 6b: Reverse-calculate MRP from known discount% (if MRP still missing) =====
+            if not mrp_value and price and discount_text:
+                pct_match = re.search(r'(\d+)', discount_text)
+                if pct_match:
+                    pct = int(pct_match.group(1))
+                    if 0 < pct < 95:
+                        mrp_value = round(price / (1 - pct / 100))
+            
             for pat in discount_patterns:
                 m = re.search(pat, html_content, re.IGNORECASE)
                 if m:
