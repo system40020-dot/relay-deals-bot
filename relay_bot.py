@@ -169,9 +169,17 @@ def fetch_product_metadata_with_playwright(url):
     """Uses Playwright real headless browser with advanced timeout, JSON-LD extraction, and generic fallback."""
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(
+            Browser = p.chromium.launch(
                 headless=True, 
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                args=[
+                    "--no-sandbox", 
+                    "--disable-setuid-sandbox", 
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu", 
+                    "--no-zygote",
+                    "--disable-extensions", 
+                    "--disable-background-networking"
+                ]
             )
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
