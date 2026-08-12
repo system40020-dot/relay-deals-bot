@@ -445,11 +445,10 @@ def process_message(msg):
 
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
-    expanded = unshorten_link(aff_link)
 
-    scraped = fetch_product_metadata_with_playwright(expanded)
-    canonical = get_canonical_url(expanded)
-
+    scraped = fetch_product_metadata_with_playwright(aff_link)
+    final_link = scraped.get("link") if scraped else None
+    canonical = get_canonical_url(final_link) if final_link else get_canonical_url(unshorten_link(aff_link))
     category_deal = parse_category_deal(original_text)
 
     if category_deal:
