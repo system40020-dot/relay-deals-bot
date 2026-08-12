@@ -246,6 +246,60 @@ def fetch_product_metadata_with_playwright(url):
                 if title and price:
                     break
 
+# ===== STEP 1b: Fallback to embedded app-state JSON (React/Next.js apps like Meesho) =====
+            if not title or not price:
+                state_blocks = re.findall(
+                    r'<script[^>]*id=["\'](?:NEXT_DATA|INITIAL_STATE|APOLLO_STATE)["\'][^>]*>(.*?)</script>',
+                    html_content, re.IGNORECASE | re.DOTALL
+                )
+                for block in state_blocks:
+                    try:
+                        state_data = json.loads(block.strip())
+                    except Exception:
+                        continue
+
+                    def find_product_fields(obj, depth=0):
+                        nonlocal title, price, image_url
+                        if depth > 8 or (title and price):
+                            return
+                        if isinstance(obj, dict):
+                            keys_lower = {k.lower(): k for k in obj.keys()}
+                            if not title:
+                                for key in ["name", "productname", "title"]:
+                                    if key in keys_lower and isinstance(obj[keys_lower[key]], str) and len(obj[keys_lower[key]]) > 5:
+                                        title = html.unescape(obj[keys_lower[key]]).strip()
+                                        break
+                            if not price:
+                                for key in ["price", "finalprice", "sellingprice", "offerprice"]:
+                                    if key in keys_lower:
+                                        val = obj[keys_lower[key]]
+                                        if isinstance(val, dict):
+                                            val = val.get("value") or val.get("amount")
+                                        try:
+                                            if val: price = float(str(val).replace(",", ""))
+                                        except Exception:
+                                            pass
+                                        if price: break
+                            if not image_url:
+                                for key in ["image", "images", "imageurl", "thumbnail"]:
+                                    if key in keys_lower:
+                                        val = obj[keys_lower[key]]
+                                        if isinstance(val, list) and val:
+                                            val = val[0]
+                                        if isinstance(val, str) and val.startswith("http"):
+                                            image_url = val
+                                            break
+                            for v in obj.values():
+                                if isinstance(v, (dict, list)):
+                                    find_product_fields(v, depth + 1)
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                find_product_fields(item, depth + 1)
+
+                    find_product_fields(state_data)
+                    if title and price:
+                        break
+            
             # ===== STEP 2: og:title / og:image fallback =====
             if not title:
                 og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
@@ -363,6 +417,14 @@ def fetch_product_metadata_with_playwright(url):
             mrp_value = None
             mrp_patterns = [
                 r'"mrp"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"listPrice"\s*:\s*\{?\s*"?(?:value|amount)?"?\s*:?\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"strikePrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"originalPrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"was_price"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"compareAtPrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"basePrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"oldPrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'"higherPrice"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
                 r'MRP[:\s₹]*([\d,]+(?:\.\d+)?)',
                 r'class=["\'][^"\']*(?:strike|line-through|linethrough|mrp|original-?price|was-?price)[^"\']*["\'][^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
                 r'<[^>]*style=["\'][^"\']*text-decoration:\s*line-through[^"\']*["\'][^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
