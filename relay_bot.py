@@ -339,16 +339,33 @@ def fetch_product_metadata_with_playwright(url):
 
             print(f"DEBUG: image_url resolved = {image_url}")
 
-            # ===== STEP 5: Price fallback (regex) if JSON-LD didn't give one =====
+    
+            # ===== STEP 5: Price fallback (Amazon-specific first, then generic regex) =====
+            if not price:
+                amazon_price = re.search(r'class=["\']a-price-whole["\'][^>]*>([\d,]+)', html_content, re.IGNORECASE)
+                if amazon_price:
+                    try: price = float(amazon_price.group(1).replace(",", ""))
+                    except: pass
+
+            if not price:
+                core_price = re.search(r'id=["\']priceblock_(?:ourprice|dealprice|saleprice)["\'][^>]*>[^₹]*₹\s?([\d,]+(?:\.\d+)?)', html_content, re.IGNORECASE)
+                if core_price:
+                    try: price = float(core_price.group(1).replace(",", ""))
+                    except: pass
+
             if not price:
                 price_match = re.search(r'₹\s?([\d,]+(?:\.\d+)?)', html_content)
                 if price_match:
                     try: price = float(price_match.group(1).replace(",", ""))
                     except: pass
 
-            # ===== STEP 6: Discount =====
-            disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
-            if disc_match: discount_text = disc_match.group(1)
+            # ===== STEP 6: Discount (Amazon-specific first, then generic) =====
+            amazon_disc = re.search(r'savingsPercentage["\'][^>]*>[\s\-]*(\d+)%', html_content, re.IGNORECASE)
+            if amazon_disc:
+                discount_text = f"{amazon_disc.group(1)}% off"
+            else:
+                disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
+                if disc_match: discount_text = disc_match.group(1)
 
             return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": final_url}
     except Exception as e:
@@ -459,16 +476,17 @@ def process_message(msg):
     if len(urls) > 1:
         try:
             requests.post(
-                f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/forwardMessage",
+                f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/copyMessage",
                 json={"chat_id": MAIN_CHAT_ID, "from_chat_id": STAGING_CHAT_ID, "message_id": msg.get("message_id")},
                 timeout=15
             )
         except Exception as e:
-            print(f"Forward error: {e}")
+            print(f"Copy error: {e}")
         return
 
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     # ... baaki poora function same rahega
+    
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
 
