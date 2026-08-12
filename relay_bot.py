@@ -314,6 +314,21 @@ def fetch_product_metadata_with_playwright(url):
 
             # ===== STEP 4: Generic image fallback chain =====
             if not image_url:
+                dynamic_img = re.search(r'data-a-dynamic-image=["\'](\{[^\'"]+\})["\']', html_content, re.IGNORECASE)
+                if dynamic_img:
+                    try:
+                        img_data = json.loads(html.unescape(dynamic_img.group(1)))
+                        if img_data:
+                            image_url = list(img_data.keys())[0]
+                    except Exception:
+                        pass
+
+            if not image_url:
+                old_hires = re.search(r'data-old-hires=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if old_hires and old_hires.group(1).strip():
+                    image_url = old_hires.group(1).strip()
+
+            if not image_url:
                 landing_img = re.search(r'id=["\']landingImage["\'][^>]*src=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
                 if landing_img:
                     image_url = landing_img.group(1).strip()
@@ -329,6 +344,8 @@ def fetch_product_metadata_with_playwright(url):
                     img_candidate = twitter_img.group(1).strip()
                     if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder"]):
                         image_url = img_candidate
+
+            print(f"DEBUG: image_url resolved = {image_url}")
 
             # ===== STEP 5: Price fallback (regex) if JSON-LD didn't give one =====
             if not price:
@@ -442,7 +459,24 @@ def post_deal(image_url, caption, ph_link):
 def process_message(msg):
     urls = extract_all_links(msg)
     if not urls: return
+        
+def process_message(msg):
+    urls = extract_all_links(msg)
+    if not urls: return
 
+    if len(urls) > 1:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{RELAY_BOT_TOKEN}/forwardMessage",
+                json={"chat_id": MAIN_CHAT_ID, "from_chat_id": STAGING_CHAT_ID, "message_id": msg.get("message_id")},
+                timeout=15
+            )
+        except Exception as e:
+            print(f"Forward error: {e}")
+        return
+
+    original_text = (msg.get("caption") or msg.get("text") or "").strip()
+    # ... baaki poora function same rahega
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
 
