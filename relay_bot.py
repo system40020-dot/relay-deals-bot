@@ -51,7 +51,77 @@ DEAL_HEADERS = [
     "📢 BIG SAVINGS INSIDE 📢",
     "🎁 STEAL DEAL ALERT 🎁"
 ]
+CATEGORY_CATALOG = {
+    "Electronics, Computers & Smart Tech": {
+        "Smartphones & Mobile Devices": ["smartphone", "android phone", "iphone", "feature phone", "foldable phone", "refurbished mobile", "unboxed mobile", "wi-fi tablet", "tablet", "ipad", "e-reader"],
+        "Mobile & Tech Accessories": ["tempered glass", "back cover", "silicone case", "power bank", "gan charger", "fast charger", "data cable", "type-c cable", "lightning cable", "otg cable", "mobile holder", "ring light", "selfie stick", "vr headset", "smartwatch strap"],
+        "Computers & Laptops": ["laptop", "gaming laptop", "2-in-1 convertible", "macbook", "desktop pc", "all-in-one pc", "gpu", "ram", "motherboard"],
+        "Computer Peripherals & Storage": ["keyboard", "wireless mouse", "gaming mouse", "external hdd", "external ssd", "pen drive", "monitor", "webcam", "printer", "ink cartridge", "router"],
+        "Audio, Wearables & Optics": ["earbuds", "tws", "anc headphone", "headphone", "bluetooth speaker", "soundbar", "home theatre", "smartwatch", "fitness band", "dslr", "mirrorless camera", "action camera", "gopro", "drone", "lens", "tripod", "binocular"],
+        "Smart Home & Automation": ["smart bulb", "led strip light", "smart plug", "video doorbell", "smart door lock", "alexa", "google nest", "voice assistant"],
+    },
+    "Large Appliances & Climate Control": {
+        "Cooling & Heating": ["split ac", "window ac", "inverter ac", "tower fan", "air cooler", "room heater", "geyser", "water heater"],
+        "Home Appliances": ["refrigerator", "fridge", "washing machine", "dishwasher", "vacuum cleaner", "robotic cleaner", "garment steamer", "water purifier", "ro purifier"],
+    },
+    "Kitchen & Dining": {
+        "Kitchen Appliances": ["microwave", "otg oven", "air fryer", "induction cooktop", "mixer grinder", "food processor", "electric kettle", "coffee maker", "sandwich maker", "toaster"],
+        "Cookware & Bakeware": ["pressure cooker", "frying pan", "non-stick pan", "cast iron cookware", "tawa", "dosa pan", "baking tray", "casserole"],
+        "Tableware & Storage": ["dinner set", "cutlery", "insulated flask", "water bottle", "container", "glass jar", "spice box", "masala dabba", "kitchen rack", "lunch box", "chopper", "vegetable peeler"],
+    },
+    "Fashion & Apparel": {
+        "Women's Western & Contemporary Wear": ["wrap dress", "shift dress", "slip dress", "bodycon dress", "a-line dress", "jumpsuit", "crop top", "peplum top", "tunic", "t-shirt", "mom jeans", "jeggings", "wide-leg trouser", "skirt", "culottes", "shrug", "co-ord set", "maternity wear"],
+        "Women's Ethnic & Festive Wear": ["cotton saree", "silk saree", "georgette saree", "chiffon saree", "bandhani saree", "kanjeevaram saree", "kurti", "anarkali", "chikankari", "kurta palazzo", "sharara set", "lehenga", "salwar suit", "dress material", "dupatta", "ethnic skirt", "gown", "blouse"],
+        "Men's Casual & Formal Wear": ["graphic t-shirt", "oversized t-shirt", "henley shirt", "polo shirt", "oxford shirt", "linen shirt", "formal shirt", "slim-fit jeans", "chinos", "cargo pants", "track pants", "joggers", "suit", "blazer", "bomber jacket", "denim jacket", "trench coat", "parka", "hoodie"],
+        "Men's Ethnic Wear": ["silk kurta", "asymmetric kurta", "sherwani", "nehru jacket", "dhoti", "mojri"],
+        "Kids & Baby Apparel": ["romper", "bodysuit", "booties", "mittens", "frock", "party dress", "kurta set", "dungaree", "school uniform", "kids sweater", "kids hoodie"],
+        "Lingerie, Innerwear & Sleepwear": ["padded bra", "t-shirt bra", "bralette", "minimizer bra", "bikini panty", "boy-short panty", "seamless panty", "camisole", "shapewear", "nighty", "night suit", "bathrobe", "vest", "briefs", "trunks"],
+        "Indie, Artisanal & Handloom": ["handloom saree", "chanderi saree", "ajrakh print", "block-print dress", "kantha quilt", "kantha jacket", "mangalgiri fabric", "potli bag", "silver jhumka"],
+    },
+    "Footwear & Accessories": {
+        "Footwear": ["running shoes", "walking shoes", "sneakers", "chunky sneakers", "high-top sneakers", "oxford shoes", "brogues", "monk strap", "block heels", "stilettos", "kitten heels", "flat sandals", "ballerinas", "platform sneakers", "crocs", "slippers", "flip-flops", "loafers"],
+        "Fashion Jewellery & Watches": ["analog watch", "chronograph watch", "smartwatch", "mangalsutra", "kundan earring", "oxidized silver earring", "bangles", "choker", "finger ring", "nose pin", "anklet", "jewellery set"],
+        "Bags, Luggage & Travel": ["trolley bag", "laptop backpack", "canvas backpack", "crossbody bag", "school bag", "duffle bag", "handbag", "wallet", "cardholder", "belt", "travel pouch"],
+        "General Accessories": ["sunglasses", "wayfarer", "polarized sunglasses", "silk tie", "cufflinks", "bucket hat", "cap", "scarf"],
+    },
+    "Beauty, Grooming, Health & Personal Care": {
+        "Makeup & Cosmetics": ["foundation", "bb cream", "compact powder", "highlighter", "kajal", "eyeliner", "lipstick", "eyeshadow palette", "makeup brush", "nail polish"],
+        "Skincare & Haircare": ["face serum", "sunscreen", "moisturizer", "sheet mask", "hair fall shampoo", "conditioner", "hair oil", "beard oil", "hair serum"],
+        "Bath, Body & Fragrances": ["perfume", "edp", "body mist", "deodorant", "shower gel", "body lotion", "loofah", "soap"],
+        "Health, Wellness & Pharmacy": ["whey protein", "multivitamin", "bp monitor", "oximeter", "first aid kit", "diaper"],
+    },
+    "Home Furnishing, Decor & Living": {
+        "Bed Linen & Textiles": ["bedsheet", "fitted bedsheet", "comforter", "pillow cover", "memory foam pillow", "blanket", "kantha quilt"],
+        "Bath & Window Furnishing": ["bath towel", "hand towel", "face towel", "bath mat", "curtain", "blackout curtain", "sofa cover", "cushion cover", "floor cushion"],
+        "Home Decor & Lighting": ["vase", "wall clock", "painting", "wall sticker", "showpiece", "aroma diffuser", "candle", "table lamp", "floor lamp", "artificial flower", "led strip light"],
+        "Home Maintenance & Utilities": ["floor wiper", "magic mop", "dustpan", "toilet brush", "mosquito net", "gardening tool", "plant pot", "seeds", "watering can"],
+    },
+    "Sports, Toys, Books & Automotive": {
+        "Sports & Fitness Equipment": ["dumbbell", "resistance band", "exercise bench", "cross trainer", "skipping rope", "yoga mat", "cricket bat", "tennis ball", "leather ball", "badminton racket", "football", "shin guard", "shaker", "gym equipment", "fitness equipment"],
+        "Toys, Games & School Supplies": ["soft toy", "remote control car", "puzzle", "board game", "action figure", "doll", "baby walker", "notebook", "fountain pen", "calculator", "desk organizer"],
+        "Books & Media": ["exam book", "novel", "textbook", "story book"],
+        "Automotive & Industrial": ["helmet", "riding gear", "phone mount", "microfiber cloth", "car care product", "industrial supply"],
+        "Grocery & Gourmet Foods": ["atta", "basmati rice", "dal", "pulses", "dry fruit", "honey", "cold-pressed oil", "cereal", "chocolate", "green tea", "health drink", "packaged snack"],
+    },
+}
 
+
+def match_category(text):
+    """Finds best matching (parent_category, catalogue_name) for given text using keyword search."""
+    if not text:
+        return None
+    text_lower = text.lower()
+    best_match = None
+    best_score = 0
+    for main_cat, subcats in CATEGORY_CATALOG.items():
+        for catalogue_name, keywords in subcats.items():
+            score = sum(1 for kw in keywords if kw in text_lower)
+            if catalogue_name.lower() in text_lower:
+                score += 3
+            if score > best_score:
+                best_score = score
+                best_match = (main_cat, catalogue_name)
+    return best_match if best_score > 0 else None
 STATE_FILE = "state.json"
 
 # ================= STATE MANAGEMENT =================
