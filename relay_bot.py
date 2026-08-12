@@ -169,7 +169,7 @@ def fetch_product_metadata_with_playwright(url):
     """Uses Playwright real headless browser with advanced timeout, JSON-LD extraction, and generic fallback."""
     try:
         with sync_playwright() as p:
-            Browser = p.chromium.launch(
+            browser = p.chromium.launch(
                 headless=True, 
                 args=[
                     "--no-sandbox", 
