@@ -340,7 +340,7 @@ def fetch_product_metadata_with_playwright(url):
             print(f"DEBUG: image_url resolved = {image_url}")
 
     
-            # ===== STEP 5: Price fallback (Amazon-specific first, then generic regex) =====
+           # ===== STEP 5: Price fallback (Amazon-specific first, then generic regex) =====
             if not price:
                 amazon_price = re.search(r'class=["\']a-price-whole["\'][^>]*>([\d,]+)', html_content, re.IGNORECASE)
                 if amazon_price:
@@ -359,15 +359,47 @@ def fetch_product_metadata_with_playwright(url):
                     try: price = float(price_match.group(1).replace(",", ""))
                     except: pass
 
-            # ===== STEP 6: Discount (Amazon-specific first, then generic) =====
-            amazon_disc = re.search(r'savingsPercentage["\'][^>]*>[\s\-]*(\d+)%', html_content, re.IGNORECASE)
-            if amazon_disc:
-                discount_text = f"{amazon_disc.group(1)}% off"
-            else:
-                disc_match = re.search(r'(\d+%\s*off|\d+\s*%\s*discount)', html_content, re.IGNORECASE)
-                if disc_match: discount_text = disc_match.group(1)
+            # ===== STEP 5b: MRP extraction (for strikethrough display + fallback calculation) =====
+            mrp_value = None
+            mrp_patterns = [
+                r'"mrp"\s*:\s*"?₹?\s?([\d,]+(?:\.\d+)?)"?',
+                r'MRP[:\s₹]*([\d,]+(?:\.\d+)?)',
+                r'class=["\'][^"\']*(?:strike|line-through|linethrough|mrp|original-?price|was-?price)[^"\']*["\'][^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
+                r'<[^>]*style=["\'][^"\']*text-decoration:\s*line-through[^"\']*["\'][^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
+                r'<del[^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
+                r'<s[^>]*>\s*₹?\s?([\d,]+(?:\.\d+)?)',
+            ]
+            for pat in mrp_patterns:
+                m = re.search(pat, html_content, re.IGNORECASE)
+                if m:
+                    try:
+                        candidate = float(m.group(1).replace(",", ""))
+                        if price and candidate > price:
+                            mrp_value = candidate
+                            break
+                    except:
+                        continue
 
-            return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "link": final_url}
+            # ===== STEP 6: Discount — explicit text FIRST, calculate ONLY if not found anywhere =====
+            discount_patterns = [
+                r'savingsPercentage[\s\S]{0,100}?(\d+)\s*%',
+                r'\(\s*(\d+)\s*%\s*off\s*\)',
+                r'(\d+)\s*%\s*off',
+                r'(\d+)\s*%\s*discount',
+                r'save\s*(\d+)\s*%',
+                r'-\s?(\d{1,2})\s*%',
+            ]
+            for pat in discount_patterns:
+                m = re.search(pat, html_content, re.IGNORECASE)
+                if m:
+                    discount_text = f"{m.group(1)}% off"
+                    break
+
+            if not discount_text and mrp_value and price and mrp_value > price:
+                computed_disc = round((mrp_value - price) / mrp_value * 100)
+                if computed_disc > 0:
+                    discount_text = f"{computed_disc}% off"
+            return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "mrp": mrp_value, "link": final_url}
     except Exception as e:
         print(f"Playwright detailed error: {e}")
         return None
