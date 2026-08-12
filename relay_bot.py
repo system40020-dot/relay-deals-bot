@@ -287,8 +287,12 @@ def fetch_product_metadata_with_playwright(url):
                 if any(pat in tl for pat in BAD_TITLE_PATTERNS):
                     return True
                 # Titles that are JUST a brand/domain name (very short, no product details)
-                if len(tl.split()) <= 2 and len(tl) < 20:
+                if len(t1.split()) <= 2 and len(t1) < 20:
                     return True
+                if re.fullmatch(r'[A-Za-z0-9\s]{3,20}', t) and any(c.isdigit() for c in t) and t.upper() == t.replace(" ", "").upper():
+                    letters_upper = sum(1 for c in t if c.isupper())
+                    if letters_upper >= 3:
+                        return True
                 return False
 
             if is_bad_title(title):
