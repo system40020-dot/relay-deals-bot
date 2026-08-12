@@ -476,8 +476,9 @@ def format_caption(title, emoji, link, scraped, show_price_line=True):
     if show_price_line:
         if scraped and scraped.get("price"):
             p_str = f"₹{scraped['price']:,.0f}"
+            mrp_str = f"<s>₹{scraped['mrp']:,.0f}</s> " if scraped.get("mrp") else ""
             d_str = f" ({scraped['discount']})" if scraped.get("discount") else ""
-            lines.append(f"💰 Price: <b>{p_str}</b>{d_str}\n")
+            lines.append(f"💰 Price: {mrp_str}<b>{p_str}</b>{d_str}\n")
         else:
             lines.append("💰 Price: <b>Check Live Platform Price</b>\n")
 
