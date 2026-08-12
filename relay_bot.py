@@ -402,7 +402,7 @@ def parse_category_deal(text):
         r'^(.*?)(?:\s*[\|:]\s*|\s+)(starting\s*@?\s*₹\s?[\d,]+(?:\.\d+)?|up\s*to\s*\d+\s*%\s*off|flat\s*\d+\s*%\s*off)',
         clean, re.IGNORECASE
     )
-    )
+    
     if not m:
         return None
     subject = m.group(1).strip(" |-:").strip()
