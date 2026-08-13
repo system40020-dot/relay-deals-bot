@@ -225,6 +225,7 @@ def fetch_product_metadata_lightweight(url):
 
 def fetch_product_metadata_with_playwright(url):
     """Uses Playwright real headless browser with advanced timeout, JSON-LD extraction, and generic fallback."""
+    browser = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -259,22 +260,35 @@ def fetch_product_metadata_with_playwright(url):
                 window.chrome = { runtime: {} };
             """)
             page = context.new_page()
-            
-            page.goto(url, timeout=40000, wait_until="networkidle")
-            time.sleep(2)
-            
+
+            page.goto(url, timeout=40000, wait_until="domcontentloaded")
+
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
             final_url = page.url
-            html_content = page.content()
+
+            html_content = None
+            for attempt in range(3):
+                try:
+                    html_content = page.content()
+                    break
+                except Exception:
+                    time.sleep(1)
+
+            if html_content is None:
+                raise Exception("Could not retrieve page content after retries")
+
             print(f"DEBUG: Final URL = {final_url}")
             print(f"DEBUG: HTML length = {len(html_content)}")
 
             if len(html_content) < 1000:
                 print(f"DEBUG: SHORT HTML CONTENT = {html_content}")
 
-            browser.close()
-
             title, image_url, price, discount_text = None, None, None, None
-
+            
             # ===== STEP 1: Try JSON-LD structured data (works across most modern e-commerce sites) =====
             ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_content, re.IGNORECASE | re.DOTALL)
             for block in ld_blocks:
@@ -664,6 +678,8 @@ def process_message(msg):
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
 
+    scraped = fetch_product_metadata_lightweight(aff_link)
+if not scraped:
     scraped = fetch_product_metadata_with_playwright(aff_link)
     final_link = scraped.get("link") if scraped else None
     canonical = get_canonical_url(final_link) if final_link else get_canonical_url(unshorten_link(aff_link))
