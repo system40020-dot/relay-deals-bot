@@ -524,15 +524,38 @@ def fetch_product_metadata_with_playwright(url):
                     except:
                         continue
 
-            # ===== STEP 6: Discount — explicit text FIRST, calculate ONLY if not found anywhere =====
-            discount_patterns = [
-                r'savingsPercentage[\s\S]{0,100}?(\d+)\s*%',
-                r'\(\s*(\d+)\s*%\s*off\s*\)',
-                r'(\d+)\s*%\s*off',
-                r'(\d+)\s*%\s*discount',
-                r'save\s*(\d+)\s*%',
-                r'-\s?(\d{1,2})\s*%',
-            ]
+            # ===== STEP 6: Discount — pehle actual scraped numbers se calculate karo (sabse accurate) =====
+            discount_text = None
+            if mrp_value and price and mrp_value > price:
+                computed_disc = round((mrp_value - price) / mrp_value * 100)
+                if computed_disc > 0:
+                    discount_text = f"{computed_disc}% off"
+
+            # Sirf tabhi text-based search karo jab number se calculate na ho paya ho
+            if not discount_text:
+                discount_patterns = [
+                    r'savingsPercentage[\s\S]{0,100}?(\d+)\s*%',
+                    r'\(\s*(\d+)\s*%\s*off\s*\)',
+                    r'(\d+)\s*%\s*off',
+                    r'(\d+)\s*%\s*discount',
+                    r'save\s*(\d+)\s*%',
+                    r'-\s?(\d{1,2})\s*%',
+                ]
+                for pat in discount_patterns:
+                    m = re.search(pat, html_content, re.IGNORECASE)
+                    if m:
+                        discount_text = f"{m.group(1)}% off"
+                        break
+
+            # Agar discount mila text se lekin MRP nahi mila, toh reverse-calculate karo
+            if not mrp_value and price and discount_text:
+                pct_match = re.search(r'(\d+)', discount_text)
+                if pct_match:
+                    pct = int(pct_match.group(1))
+                    if 0 < pct < 95:
+                        mrp_value = round(price / (1 - pct / 100))
+
+            return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "mrp": mrp_value, "link": final_url}
             
             # ===== STEP 6b: Reverse-calculate MRP from known discount% (if MRP still missing) =====
             if not mrp_value and price and discount_text:
