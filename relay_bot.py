@@ -209,11 +209,10 @@ def fetch_product_metadata_with_playwright(url):
             html_content = page.content()
             print(f"DEBUG: Final URL = {final_url}")
             print(f"DEBUG: HTML length = {len(html_content)}")
-            print(f"DEBUG: Final URL = {final_url}")
-print(f"DEBUG: HTML length = {len(html_content)}")
 
-if len(html_content) < 1000:
-    print(f"DEBUG: SHORT HTML CONTENT = {html_content}")
+            if len(html_content) < 1000:
+                print(f"DEBUG: SHORT HTML CONTENT = {html_content}")
+
             browser.close()
 
             title, image_url, price, discount_text = None, None, None, None
