@@ -10,8 +10,6 @@ import urllib.parse
 import html
 from playwright.sync_api import sync_playwright
 
-from bs4 import BeautifulSoup
-
 app = Flask('')
 
 @app.route('/')
@@ -558,6 +556,12 @@ def fetch_product_metadata_with_playwright(url):
     except Exception as e:
         print(f"Playwright detailed error: {e}")
         return None
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
 
      
             
