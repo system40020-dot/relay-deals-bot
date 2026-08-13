@@ -10,6 +10,8 @@ import urllib.parse
 import html
 from playwright.sync_api import sync_playwright
 
+from bs4 import BeautifulSoup
+
 app = Flask('')
 
 @app.route('/')
@@ -164,6 +166,62 @@ def unshorten_link(short_url):
         return final_url
     except Exception:
         return short_url
+
+def fetch_product_metadata_lightweight(url):
+    """Bina browser khole, sirf HTML fetch karke JSON-LD/OG tags se data nikalta hai."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "en-IN,en;q=0.9",
+        }
+        resp = requests.get(url, headers=headers, timeout=12, allow_redirects=True)
+        html_content = resp.text
+        final_url = resp.url
+
+        title, image_url, price = None, None, None
+
+        ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_content, re.IGNORECASE | re.DOTALL)
+        for block in ld_blocks:
+            try:
+                data = json.loads(block.strip())
+                candidates = data if isinstance(data, list) else [data]
+                for item in candidates:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("@type") == "Product":
+                        if not title and item.get("name"):
+                            title = html.unescape(str(item["name"])).strip()
+                        if not image_url and item.get("image"):
+                            img = item["image"]
+                            image_url = img[0] if isinstance(img, list) else (img.get("url") if isinstance(img, dict) else img)
+                        offers = item.get("offers")
+                        if offers:
+                            offers = offers[0] if isinstance(offers, list) else offers
+                            if isinstance(offers, dict) and offers.get("price"):
+                                try:
+                                    price = float(str(offers["price"]).replace(",", ""))
+                                except:
+                                    pass
+            except Exception:
+                continue
+            if title and price:
+                break
+
+        if not title:
+            m = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if m:
+                title = html.unescape(m.group(1)).strip()
+        if not image_url:
+            m = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+            if m:
+                image_url = m.group(1).strip()
+
+        if title and len(html_content) > 5000:
+            return {"title": title, "image_url": image_url, "price": price, "link": final_url}
+        return None
+    except Exception as e:
+        print(f"Lightweight fetch error: {e}")
+        return None
 
 def fetch_product_metadata_with_playwright(url):
     """Uses Playwright real headless browser with advanced timeout, JSON-LD extraction, and generic fallback."""
