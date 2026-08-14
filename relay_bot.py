@@ -675,10 +675,6 @@ def post_deal(image_url, caption, ph_link):
 def process_message(msg):
     urls = extract_all_links(msg)
     if not urls: return
-        
-def process_message(msg):
-    urls = extract_all_links(msg)
-    if not urls: return
 
     if len(urls) > 1:
         try:
@@ -692,13 +688,10 @@ def process_message(msg):
         return
 
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
-    # ... baaki poora function same rahega
-    
-    original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
 
     scraped = fetch_product_metadata_lightweight(aff_link)
-    if not scraped:
+    if not scraped or not scraped.get("price") or not scraped.get("image_url"):
         scraped = fetch_product_metadata_with_playwright(aff_link)
 
     final_link = scraped.get("link") if scraped else None
@@ -738,7 +731,6 @@ def process_message(msg):
     caption = format_caption(title, emoji, aff_link, scraped)
     image_url = scraped.get("image_url") if scraped else None
     post_deal(image_url, caption, ph_link)
-
 def background_bot_loop():
     print("Playwright background bot listener started...")
     while True:
