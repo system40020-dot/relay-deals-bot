@@ -8,7 +8,7 @@ import random
 import requests
 import urllib.parse
 import html
-from playwright.sync_api import sync_playwright
+from patchright.sync_api import sync_playwright
 
 app = Flask('')
 
