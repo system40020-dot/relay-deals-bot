@@ -697,11 +697,24 @@ def fetch_product_metadata_with_playwright(url):
                 og_image = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
                 if og_image:
                     img_candidate = og_image.group(1).strip()
-                    if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite"]):
+                    if not any(bad in img_candidate.lower() for bad in ["logo", "icon", "default", "placeholder", "sprite", "smile", "favicon", "app-icon", "generic"]):
                         image_url = img_candidate
 
             # ===== STEP 3: Generic bad-title detection (pattern-based, not hardcoded per platform) =====
             BAD_TITLE_PATTERNS = [
+                
+                "access denied", "site maintenance", "under maintenance", "robot check",
+                "are you a human", "verify you are human", "captcha", "forbidden",
+                "error 403", "error 404", "page not found", "just a moment",
+                "attention required", "service unavailable", "bot detection",
+                "online shopping", "online store", "e-commerce", "welcome to",
+                "oops", "something went wrong", "unexpected error", "please try again",
+                "temporarily unavailable", "we're sorry", "we are sorry", "session expired",
+                "invalid request", "suspicious activity", "blocked", "not found",
+                "try again later", "went wrong", "server error", "internal error",
+                "cannot process", "unavailable", "denied", "unauthorized",
+                "add to your order", "add to cart", "add to bag", "shop now",
+                "buy daily essentials", "bill payments", "download the app"
                 "access denied", "site maintenance", "under maintenance", "robot check",
                 "are you a human", "verify you are human", "captcha", "forbidden",
                 "error 403", "error 404", "page not found", "just a moment",
