@@ -3,4 +3,4 @@ pyrogram
 tgcrypto
 beautifulsoup4
 requests
-playwright
+patchright
