@@ -842,14 +842,23 @@ def fetch_product_metadata_with_playwright(url):
                     except:
                         continue
 
-            # ===== STEP 6: Discount — pehle actual scraped numbers se calculate karo (sabse accurate) =====
+            # ===== STEP 6: Discount — validated against already-extracted price (avoids ads/unrelated products) =====
             discount_text = None
-            if mrp_value and price and mrp_value > price:
-                computed_disc = round((mrp_value - price) / mrp_value * 100)
-                if computed_disc > 0:
-                    discount_text = f"{computed_disc}% off"
+            if price:
+                price_variants = set()
+                price_variants.add(f"{price:,.0f}")
+                price_variants.add(f"{int(price)}")
+                for pv in price_variants:
+                    pv_esc = re.escape(pv)
+                    m = re.search(rf'(\d+)\s*%[\s\S]{{0,80}}?₹\s?{pv_esc}\b', html_content)
+                    if m:
+                        discount_text = f"{m.group(1)}% off"
+                        break
+                    m2 = re.search(rf'₹\s?{pv_esc}\b[\s\S]{{0,80}}?(\d+)\s*%', html_content)
+                    if m2:
+                        discount_text = f"{m2.group(1)}% off"
+                        break
 
-            # Sirf tabhi text-based search karo jab number se calculate na ho paya ho
             if not discount_text:
                 discount_patterns = [
                     r'savingsPercentage[\s\S]{0,100}?(\d+)\s*%',
@@ -859,22 +868,10 @@ def fetch_product_metadata_with_playwright(url):
                     r'save\s*(\d+)\s*%',
                     r'-\s?(\d{1,2})\s*%',
                 ]
-                # Words that mean the matched "% off" is actually a COUPON offer,
-                # not the product's real discount (e.g. "Get Flat 5% OFF, apply
-                # coupon code BYNG5 to unlock"). We skip any match found too close
-                # to these words so coupon-box numbers don't get posted as the deal.
-                COUPON_CONTEXT_WORDS = [
-                    "coupon", "code:", "promo code", "unlock this offer",
-                    "apply coupon", "use code", "voucher"
-                ]
                 for pat in discount_patterns:
-                    for m in re.finditer(pat, html_content, re.IGNORECASE):
-                        window = html_content[max(0, m.start() - 120): m.end() + 120].lower()
-                        if any(w in window for w in COUPON_CONTEXT_WORDS):
-                            continue
+                    m = re.search(pat, html_content, re.IGNORECASE)
+                    if m:
                         discount_text = f"{m.group(1)}% off"
-                        break
-                    if discount_text:
                         break
 
             # Agar discount mila text se lekin MRP nahi mila, toh reverse-calculate karo
@@ -884,7 +881,6 @@ def fetch_product_metadata_with_playwright(url):
                     pct = int(pct_match.group(1))
                     if 0 < pct < 95:
                         mrp_value = round(price / (1 - pct / 100))
-
             return {"title": title, "image_url": image_url, "price": price, "discount": discount_text, "mrp": mrp_value, "link": final_url}
     except Exception as e:
         print(f"Playwright detailed error: {e}")
