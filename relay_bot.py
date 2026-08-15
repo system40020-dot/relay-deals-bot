@@ -61,7 +61,7 @@ def test_category():
     products = fetch_category_products_flipkart(url)
     return {"count": len(products), "products": products}
 
-def fetch_category_products_flipkart(category_url, max_products=10, max_pages=4):
+def fetch_category_products_flipkart(category_url, max_products=10, max_pages=1):
     """Flipkart category/listing page se multiple products nikaalta hai (bina Playwright ke).
     Multiple pages (pagination) automatically cover karta hai jab tak naye products milte rahein.
     Ek persistent session (cookies ke saath) use karta hai taaki real-browser jaisa lage."""
@@ -192,7 +192,7 @@ def fetch_category_products_flipkart(category_url, max_products=10, max_pages=4)
     except Exception as e:
         print(f"Category fetch error: {e}")
         return products
-def fetch_category_products_amazon(category_url, max_products=10, max_pages=3):
+def fetch_category_products_amazon(category_url, max_products=10, max_pages=1):
     """Amazon search/category listing page se multiple products nikaalta hai (bina Playwright ke).
     NOTE: Amazon Flipkart se zyaada aggressively bot-block karta hai, isliye is func ka
     success-rate Flipkart wale se kam ho sakta hai - yeh best-effort hai. Pagination bhi try karta hai.
