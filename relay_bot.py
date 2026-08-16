@@ -405,6 +405,31 @@ def run_web():
 
 # ================= CONFIGURATION =================
 RELAY_BOT_TOKEN = os.getenv("RELAY_BOT_TOKEN", "")
+EARNKARO_API_KEY = os.getenv("EARNKARO_API_KEY", "")
+
+def convert_link_earnkaro(raw_url):
+    """EarnKaro API se raw (unaffiliated) product link ko affiliate-tagged link mein convert karta hai."""
+    if not EARNKARO_API_KEY or not raw_url:
+        return None
+    try:
+        resp = requests.post(
+            "https://ekaro-api.affiliaters.in/api/converter/public",
+            headers={
+                "Authorization": f"Bearer {EARNKARO_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={"deal": raw_url, "convert_option": "convert_only"},
+            timeout=15
+        )
+        data = resp.json()
+        if data.get("success") == 1 and data.get("data"):
+            match = re.search(r'https?://\S+', data["data"].strip())
+            if match:
+                return match.group(0).rstrip(".,;!)")
+        return None
+    except Exception as e:
+        print(f"DEBUG EARNKARO: conversion failed for {raw_url[:60]} -> {e}")
+        return None
 MAIN_BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN", "")
 
 STAGING_CHAT_ID = os.getenv("STAGING_CHAT_ID", "")
