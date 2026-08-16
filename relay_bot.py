@@ -1205,7 +1205,9 @@ def start_category_scheduler(category_url, interval_minutes=30, min_discount=0, 
                         product = queue.pop(0)
                         title = product["title"]
                         emoji = get_emoji(title)
-                        canonical = get_canonical_url(product["link"])
+                        raw_link = product["link"]
+                        buy_link = convert_link_earnkaro(raw_link) or raw_link
+                        canonical = get_canonical_url(raw_link)
                         ph_link = build_price_history_link(canonical, title)
 
                         scraped = {
@@ -1213,7 +1215,7 @@ def start_category_scheduler(category_url, interval_minutes=30, min_discount=0, 
                             "mrp": product.get("mrp"),
                             "discount": f"{product['discount_pct']}% off" if product.get("discount_pct") else None,
                         }
-                        caption = format_caption(title, emoji, product["link"], scraped)
+                        caption = format_caption(title, emoji, buy_link, scraped)
                         post_deal(product.get("image_url"), caption, ph_link)
                         print(f"DEBUG SCHEDULER [{category_url[:40]}]: Posted -> {title[:50]}")
 
