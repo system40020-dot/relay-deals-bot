@@ -4,3 +4,4 @@ tgcrypto
 beautifulsoup4
 requests
 patchright
+camoufox[geoip]
