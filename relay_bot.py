@@ -94,9 +94,9 @@ def fetch_html_via_browser(url, referer=None):
                 window.chrome = { runtime: {} };
             """)
             page = context.new_page()
-            page.goto(url, timeout=22000, wait_until="domcontentloaded")
+            page.goto(url, timeout=35000, wait_until="domcontentloaded")
             try:
-                page.wait_for_load_state("networkidle", timeout=8000)
+                page.wait_for_load_state("networkidle", timeout=12000)
             except Exception:
                 pass
             # reCAPTCHA "Confirming..." ke liye thoda extra wait - real browser se kabhi-kabhi auto-pass ho jaata hai
@@ -1089,10 +1089,10 @@ def fetch_product_metadata_with_playwright(url):
             """)
             page = context.new_page()
 
-            page.goto(url, timeout=22000, wait_until="domcontentloaded")
+            page.goto(url, timeout=35000, wait_until="domcontentloaded")
 
             try:
-                page.wait_for_load_state("networkidle", timeout=8000)
+                page.wait_for_load_state("networkidle", timeout=12000)
             except Exception:
                 pass
 
