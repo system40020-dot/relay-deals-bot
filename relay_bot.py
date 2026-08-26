@@ -1096,6 +1096,8 @@ def fetch_product_metadata_with_playwright(url):
             except Exception:
                 pass
 
+            time.sleep(2)
+
             final_url = page.url
 
             html_content = None
