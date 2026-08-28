@@ -1748,9 +1748,9 @@ def process_message(msg):
     aff_link = urls[0]
     scrape_url = resolve_known_interstitial(aff_link)
 
-    scraped = fetch_product_metadata_lightweight(aff_link)
+    scraped = fetch_product_metadata_lightweight(scrape_url)
     if not scraped or not scraped.get("price") or not scraped.get("image_url"):
-        scraped = fetch_product_metadata_with_playwright(aff_link)
+        scraped = fetch_product_metadata_with_playwright(scrape_url)
 
     final_link = scraped.get("link") if scraped else None
     canonical = get_canonical_url(final_link) if final_link else get_canonical_url(unshorten_link(aff_link))
