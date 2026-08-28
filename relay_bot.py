@@ -742,6 +742,9 @@ def fetch_product_metadata_with_playwright(url):
             print(f"DEBUG: Final URL = {final_url}")
             print(f"DEBUG: HTML length = {len(html_content)}")
 
+            if "linkredirect.in" in final_url or "visitretailer" in final_url:
+                print(f"DEBUG: Interstitial page detected, sample = {html_content[:1000]}")
+
             if len(html_content) < 1000:
                 print(f"DEBUG: SHORT HTML CONTENT = {html_content}")
 
