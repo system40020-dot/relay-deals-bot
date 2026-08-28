@@ -1745,6 +1745,9 @@ def process_message(msg):
     original_text = (msg.get("caption") or msg.get("text") or "").strip()
     aff_link = urls[0]
 
+    aff_link = urls[0]
+    scrape_url = resolve_known_interstitial(aff_link)
+
     scraped = fetch_product_metadata_lightweight(aff_link)
     if not scraped or not scraped.get("price") or not scraped.get("image_url"):
         scraped = fetch_product_metadata_with_playwright(aff_link)
