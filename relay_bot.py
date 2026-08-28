@@ -411,6 +411,25 @@ def run_web():
 RELAY_BOT_TOKEN = os.getenv("RELAY_BOT_TOKEN", "")
 EARNKARO_API_KEY = os.getenv("EARNKARO_API_KEY", "")
 
+def resolve_known_interstitial(url):
+    """Kuch affiliate-networks (jaise linkredirect.in) ek 'dl=' query-parameter mein hi asli
+    destination URL de dete hain (URL-encoded). Playwright se JS-wait karne ki zaroorat nahi -
+    seedha URL se hi nikaal ke use karte hain."""
+    try:
+        resp = requests.get(url, timeout=10, allow_redirects=True,
+                             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        landed = resp.url
+        if "linkredirect.in" in landed or "visitretailer" in landed:
+            parsed = urllib.parse.urlparse(landed)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "dl" in qs and qs["dl"] and qs["dl"][0].startswith("http"):
+                real_url = qs["dl"][0]
+                print(f"DEBUG: Interstitial resolved directly -> {real_url}")
+                return real_url
+    except Exception as e:
+        print(f"DEBUG: Interstitial pre-check failed: {e}")
+    return url
+
 def convert_link_earnkaro(raw_url):
     """EarnKaro API se raw (unaffiliated) product link ko affiliate-tagged link mein convert karta hai."""
     if not EARNKARO_API_KEY or not raw_url:
