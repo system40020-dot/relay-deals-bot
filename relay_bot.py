@@ -413,12 +413,14 @@ EARNKARO_API_KEY = os.getenv("EARNKARO_API_KEY", "")
 
 def resolve_known_interstitial(url):
     """Kuch affiliate-networks (jaise linkredirect.in) ek 'dl=' query-parameter mein hi asli
-    destination URL de dete hain (URL-encoded). Playwright se JS-wait karne ki zaroorat nahi -
-    seedha URL se hi nikaal ke use karte hain."""
+    destination URL de dete hain. Poora page download karne ki bajaye, stream=True use karke
+    sirf URL check karte hain aur turant connection band kar dete hain - taaki extra delay
+    kam se kam ho."""
     try:
-        resp = requests.get(url, timeout=10, allow_redirects=True,
+        resp = requests.get(url, timeout=6, allow_redirects=True, stream=True,
                              headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         landed = resp.url
+        resp.close()
         if "linkredirect.in" in landed or "visitretailer" in landed:
             parsed = urllib.parse.urlparse(landed)
             qs = urllib.parse.parse_qs(parsed.query)
