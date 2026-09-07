@@ -1370,6 +1370,9 @@ def track_price(link, title, price, image_url, chat_id=None):
 def check_price_drops():
     """Saare tracked deals ko dobara scrape karke price-drop check karta hai. Agar price gira mila,
     naya 'Price Dropped!' post karta hai us channel pe jaha original post hua tha."""
+    if BOT_SETTINGS["paused"]:
+        print("DEBUG PRICE-DROP: Bot paused hai, is cycle mein price-check skip kar rahe hain")
+        return
     try:
         with open(PRICE_TRACK_FILE, "r") as f:
             data = json.load(f)
