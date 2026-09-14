@@ -810,7 +810,9 @@ def fetch_product_metadata_with_playwright(url):
                 title, image_url, price, discount_text = None, None, None, None
 
                 # ===== STEP 1: Try JSON-LD structured data (works across most modern e-commerce sites) =====
-                ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_content, re.IGNORECASE | re.DOTALL)
+                ld_blocks = re.findall(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html_content, re.IGNORECASE | re.DOTALL)print(f"DEBUG: JSON-LD blocks found = {len(ld_blocks)}")
+                for idx, block in enumerate(ld_blocks[:3]):
+                    print(f"DEBUG: JSON-LD block {idx} sample = {block[:500]}")
                 for block in ld_blocks:
                     try:
                         data = json.loads(block.strip())
