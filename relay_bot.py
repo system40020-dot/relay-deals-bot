@@ -997,8 +997,13 @@ def fetch_product_metadata_with_playwright(url):
 
                 print(f"DEBUG: image_url resolved = {image_url}")
 
+                price_area_match = re.search(r'(₹[\d,]+.{0,300})', html_content)
+                if price_area_match:
+                    print(f"DEBUG PRICE AREA SAMPLE = {price_area_match.group(1)[:400]}")
+                else:
+                    print("DEBUG PRICE AREA: Koi ₹ symbol hi nahi mila poore page mein!")
 
-               # ===== STEP 5: Price fallback (Amazon-specific first, then generic regex) =====
+                # ===== STEP 5: Price fallback (Amazon-specific first, then generic regex) =====
                 if not price:
                     amazon_price = re.search(r'class=["\']a-price-whole["\'][^>]*>([\d,]+)', html_content, re.IGNORECASE)
                     if amazon_price:
